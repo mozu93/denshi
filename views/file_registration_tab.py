@@ -369,9 +369,15 @@ class FileRegistrationTab(QWidget):
     def update_document_types(self):
         self.document_type_combo.clear()
         if self.transaction_type_expenditure_radio.isChecked():
-            self.document_type_combo.addItems(["01.注文書・契約書", "02.見積書(確定版)", "03.請求書", "04.領収証", "05.振込明細", "06.引落通知", "07.その他"])
+            expenditure_types = self.config_manager.get_section('FolderNames_Expenditure')
+            # Filter out the top-level 'expenditure' entry
+            filtered_types = {k: v for k, v in expenditure_types.items() if k != 'expenditure'}
+            self.document_type_combo.addItems(list(filtered_types.values()))
         else:
-            self.document_type_combo.addItems(["01.注文書・契約書", "02.見積書(確定版)", "03.請求書", "04.領収証", "05.振込通知", "06.その他"])
+            income_types = self.config_manager.get_section('FolderNames_Income')
+            # Filter out the top-level 'income' entry
+            filtered_types = {k: v for k, v in income_types.items() if k != 'income'}
+            self.document_type_combo.addItems(list(filtered_types.values()))
         self.update_doc_id()
 
     def update_doc_id(self):

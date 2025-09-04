@@ -107,6 +107,37 @@ class MetadataManager:
             df = pd.DataFrame(current_year_metadata)
             self.save_df(year_nendo_dir, df)
 
+    def has_files_for_doc_type(self, transaction_type, doc_type):
+        for year_nendo_dir in os.listdir(self.root_path):
+            full_year_path = os.path.join(self.root_path, year_nendo_dir)
+            if os.path.isdir(full_year_path) and re.match(r'^\d{4}年度$', year_nendo_dir):
+                target_dir = os.path.join(full_year_path, transaction_type, doc_type)
+                if os.path.exists(target_dir) and len(os.listdir(target_dir)) > 0:
+                    return True
+        return False
+
+    def has_any_entries(self):
+        for year_nendo_dir in os.listdir(self.root_path):
+            full_path = os.path.join(self.root_path, year_nendo_dir)
+            if os.path.isdir(full_path) and re.match(r'^\d{4}年度$', year_nendo_dir):
+                csv_path = self._get_csv_path(year_nendo_dir)
+                if os.path.exists(csv_path):
+                    df = pd.read_csv(csv_path)
+                    if not df.empty:
+                        return True
+        return False
+
+    def get_available_years(self):
+        years = []
+        if not os.path.exists(self.root_path):
+            return years
+        for entry in os.listdir(self.root_path):
+            full_path = os.path.join(self.root_path, entry)
+            if os.path.isdir(full_path) and re.match(r'^\d{4}年度$', entry):
+                years.append(entry)
+        years.sort(reverse=True) # Newest year first
+        return years
+
     def search_entries(self, year_nendo, doc_type=None, client_name=None, date_from=None, date_to=None, amount_from=None, amount_to=None, memo=None):
         df = self.load_df(year_nendo)
         if df.empty:

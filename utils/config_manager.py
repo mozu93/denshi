@@ -9,10 +9,24 @@ class ConfigManager:
     def get(self, section, key, fallback=None):
         return self.config.get(section, key, fallback=fallback)
 
+    def get_section(self, section):
+        if self.config.has_section(section):
+            return dict(self.config.items(section))
+        return {}
+
+    def set_section(self, section, data):
+        if self.config.has_section(section):
+            self.config.remove_section(section)
+        self.config.add_section(section)
+        for key, value in data.items():
+            self.config.set(section, key, str(value))
+        self._save_config()
+
     def set(self, section, key, value):
         if not self.config.has_section(section):
             self.config.add_section(section)
-        self.config.set(section, key, value)
+        self.config.set(section, key, str(value))
+        self._save_config()
 
     def save(self):
         with open(self.config_path, 'w', encoding='utf-8') as configfile:

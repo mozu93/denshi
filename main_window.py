@@ -3,12 +3,13 @@ from views.file_registration_tab import FileRegistrationTab
 from views.file_search_tab import FileSearchTab
 from utils.config_manager import ConfigManager
 from models.metadata_manager import MetadataManager
+from PyQt6.QtCore import QTimer # Add this line
 
 class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True) # Accept drops on the main window
-        self.setWindowTitle("PDF請求書リネーム支援ツール")
+        self.setWindowTitle("電子帳簿保存システム")
         self.setGeometry(100, 100, 1200, 800)
 
         # Central Widget
@@ -37,6 +38,7 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("準備完了")
+        self._show_startup_guide() # Show guide after everything is set up
 
     def _create_menus(self):
         # File Menu
@@ -59,6 +61,43 @@ class MainWindow(QMainWindow):
         settings_action = tool_menu.addAction("設定")
         settings_action.triggered.connect(self.open_settings)
 
+        # Help Menu
+        help_menu = self.menu_bar.addMenu("ヘルプ")
+        view_help_action = help_menu.addAction("ヘルプを表示")
+        view_help_action.triggered.connect(self._show_help_dialog)
+
+    def _show_startup_guide(self):
+        # Check if the guide should be shown based on config
+        show_guide = self.config_manager.get('Settings', 'show_startup_guide', fallback='True').lower() == 'true'
+        if not show_guide:
+            return
+
+        # Use QTimer.singleShot to display the message after the main window is shown
+        QTimer.singleShot(100, self._display_guide_message)
+
+    def _display_guide_message(self):
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("ご利用ガイド")
+        msg_box.setText(
+            "ファイルを登録するには:\n"
+            "  - メニューから「ファイル」→「PDFを開く」を選択\n"
+            "  - または、PDFファイルをこのウィンドウにドラッグ＆ドロップ\n\n"
+            "登録済みのファイルを検索する場合は、上部の「ファイル検索モード」タブから検索してください。"
+        )
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+        # Add "Don't show again" checkbox
+        from PyQt6.QtWidgets import QCheckBox # Import QCheckBox here
+        dont_show_again_checkbox = QCheckBox("今後、このメッセージを表示しない", msg_box)
+        msg_box.setCheckBox(dont_show_again_checkbox)
+
+        msg_box.exec() # Show the message box and wait for user interaction
+
+        # Save preference if checkbox is checked
+        if dont_show_again_checkbox.isChecked():
+            self.config_manager.set('Settings', 'show_startup_guide', 'False')
+
     def rebuild_index(self):
         reply = QMessageBox.question(self, 'インデックス再構築', 
                                      '本当にインデックスを再構築しますか？既存のインデックスは上書きされます。',
@@ -73,10 +112,30 @@ class MainWindow(QMainWindow):
 
     def open_settings(self):
         from views.settings_dialog import SettingsDialog
-        dialog = SettingsDialog(self.config_manager, self)
+        dialog = SettingsDialog(self.config_manager, self.metadata_manager, self)
         if dialog.exec():
             self.metadata_manager = MetadataManager(self.config_manager.get('Paths', 'root_save_directory'))
             QMessageBox.information(self, "設定", "設定を保存しました。")
+
+    def _show_help_dialog(self):
+        help_message = (
+            "電子帳簿保存システム ヘルプ\n\n"
+            "このアプリケーションは、電子帳簿保存法に対応した電子取引データの管理を支援します。\n\n"
+            "【ファイル登録モード】\n"
+            "PDFファイルを登録し、ファイル名を自動生成します。\n"
+            "- ファイルの追加: メニューから「ファイル」→「PDFを開く」を選択するか、PDFファイルをウィンドウにドラッグ＆ドロップしてください。\n"
+            "- データ入力: PDFプレビューを見ながら、発行日、取引先名、金額などを入力します。OCR機能で自動読み取りも可能です。\n"
+            "- 保存: 「保存して次へ」ボタンでファイルを保存し、次の処理へ進みます。\n\n"
+            "【ファイル検索モード】\n"
+            "登録済みのファイルを検索・管理します。\n"
+            "- 検索: 年度や取引先名などの条件でファイルを検索できます。Enterキーでも検索を実行できます。\n"
+            "- 編集・削除: 検索結果からファイルの情報を編集したり、削除したりできます。\n\n"
+            "【設定】\n"
+            "保存先フォルダや書類分類などをカスタマイズできます。\n\n"
+            "【インデックス再構築】\n"
+            "ファイルシステムとメタデータの整合性を再構築します。"
+        )
+        QMessageBox.information(self, "電子帳簿保存システム ヘルプ", help_message)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():

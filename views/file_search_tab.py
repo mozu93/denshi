@@ -31,6 +31,7 @@ class FileSearchTab(QWidget):
         main_layout.addWidget(results_group)
         
         self.setLayout(main_layout)
+        self._populate_year_combo() # Populate the year combobox
 
     def _create_search_group(self):
         """Creates the search conditions group box."""
@@ -38,8 +39,7 @@ class FileSearchTab(QWidget):
         layout = QGridLayout()
 
         # Search fields
-        self.year_edit = QLineEdit()
-        self.year_edit.setPlaceholderText("例: 2025")
+        self.year_combo = QComboBox()
         self.doc_type_combo = QComboBox()
         self.doc_type_combo.addItems(["すべて", "01.注文書・契約書", "02.見積書(確定版)", "03.請求書", "04.領収証", "05.振込明細", "06.引落通知", "07.その他"])
         self.client_name_edit = QLineEdit()
@@ -51,9 +51,16 @@ class FileSearchTab(QWidget):
         self.amount_to_edit = QLineEdit()
         self.memo_edit = QLineEdit()
 
+        # Connect returnPressed signal to search button click
+        # self.year_edit.returnPressed.connect(self._search_files) # Removed as it's now a QComboBox
+        self.client_name_edit.returnPressed.connect(self._search_files)
+        self.amount_from_edit.returnPressed.connect(self._search_files)
+        self.amount_to_edit.returnPressed.connect(self._search_files)
+        self.memo_edit.returnPressed.connect(self._search_files)
+
         # Layout setup
         form_layout = QFormLayout()
-        form_layout.addRow("年度:", self.year_edit)
+        form_layout.addRow("年度:", self.year_combo)
         form_layout.addRow("書類種別:", self.doc_type_combo)
         form_layout.addRow("取引先名:", self.client_name_edit)
         form_layout.addRow("発行日 (From):", self.date_from_edit)
@@ -75,6 +82,15 @@ class FileSearchTab(QWidget):
 
         search_group.setLayout(layout)
         return search_group
+
+    def _populate_year_combo(self):
+        available_years = self.metadata_manager.get_available_years()
+        self.year_combo.clear()
+        if available_years:
+            self.year_combo.addItems(available_years)
+            self.year_combo.setCurrentIndex(0) # Select the newest year by default
+        else:
+            self.year_combo.addItem("年度なし") # Or a default message
 
     def _create_results_group(self):
         """Creates the search results group box."""
@@ -104,12 +120,11 @@ class FileSearchTab(QWidget):
         return results_group
 
     def _search_files(self):
-        year_text = self.year_edit.text()
-        if not year_text or not year_text.isdigit():
-            QMessageBox.warning(self, "入力エラー", "年度を半角数字で正しく入力してください。例: 2025")
+        year_nendo = self.year_combo.currentText()
+        if year_nendo == "年度なし" or not year_nendo: # Handle case where no years are found
+            QMessageBox.warning(self, "入力エラー", "検索する年度を選択してください。")
             return
-        
-        year_nendo = f"{year_text}年度"
+        # No need for isdigit() check as it comes from valid folder names
         
         # Collect search criteria
         criteria = {
