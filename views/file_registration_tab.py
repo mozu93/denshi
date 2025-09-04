@@ -1,0 +1,527 @@
+import os
+import shutil
+import io
+from functools import partial
+import re
+
+from PyQt6.QtWidgets import (
+    QWidget, QHBoxLayout, QListWidget, QLabel, QLineEdit, QFormLayout, 
+    QPushButton, QVBoxLayout, QGroupBox, QRadioButton, QComboBox, QTextEdit,
+    QSplitter, QMessageBox, QFileDialog, QScrollArea, QToolBar
+)
+from PyQt6.QtGui import QPixmap, QImage, QColor, QPainter, QPen, QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QBuffer, QIODevice, QPoint, QRect, QSize
+from PIL import Image, ImageQt # Import ImageQt
+
+from models.pdf_processor import PdfProcessor
+from models.ocr_processor import OcrProcessor
+from utils.date_converter import DateConverter
+from utils.validator import Validator
+
+from PyQt6.QtWidgets import QFileDialog
+
+
+
+class SelectablePdfPreviewLabel(QLabel):
+    """A QLabel that allows drawing a selection rectangle and emits a signal with the selected region."""
+    selection_changed = pyqtSignal(QRect)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMouseTracking(True) # Enable mouse tracking even when no button is pressed
+        self.selecting_region = False
+        self.selection_start_point = QPoint()
+        self.selection_end_point = QPoint()
+        self.current_pixmap = None
+
+    def setPixmap(self, pixmap):
+        super().setPixmap(pixmap)
+        self.current_pixmap = pixmap
+        self.update() # Redraw to clear any old selection
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.selecting_region = True
+            self.selection_start_point = event.pos()
+            self.selection_end_point = event.pos()
+            self.update() # Start drawing selection
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.selecting_region:
+            self.selection_end_point = event.pos()
+            self.update() # Redraw selection rectangle
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.selecting_region:
+            self.selecting_region = False
+            selection_rect = QRect(self.selection_start_point, self.selection_end_point).normalized()
+            self.selection_changed.emit(selection_rect)
+            self.update() # Final redraw
+        super().mouseReleaseEvent(event)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.selecting_region or (self.selection_start_point != self.selection_end_point and not self.selecting_region):
+            painter = QPainter(self)
+            painter.setPen(QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.DotLine))
+            selection_rect = QRect(self.selection_start_point, self.selection_end_point).normalized()
+            painter.drawRect(selection_rect)
+
+class FileRegistrationTab(QWidget):
+    def __init__(self, config_manager, metadata_manager, parent=None):
+        super().__init__(parent)
+        self.config_manager = config_manager
+        self.metadata_manager = metadata_manager
+        self.active_field = None
+        self.overlay_labels = []
+        self.pixmap_display_scale_factor = 1.0 # Scale factor for displaying pixmap
+        self.ocr_scale_factor = 3 # Scale factor for OCR input image
+        self.zoom_level = 1.0
+        self.date_converter = DateConverter()
+        self.validator = Validator()
+
+        # --- Layout --- 
+        main_layout = QHBoxLayout(self) # Main layout is now horizontal
+
+        # Top section: File List and PDF Preview
+        # Left Column: File List and Data Input
+        left_column_layout = QVBoxLayout()
+
+        # File List Group
+        file_list_group = QGroupBox("登録ファイル")
+        file_list_layout = QVBoxLayout()
+        self.file_list_widget = QListWidget()
+        self.file_list_widget.currentItemChanged.connect(self.display_pdf_preview)
+        file_list_layout.addWidget(self.file_list_widget)
+        file_list_group.setLayout(file_list_layout)
+        left_column_layout.addWidget(file_list_group, 1) # Stretch factor 1 for file list (1/3 of left column)
+
+        # PDF Preview Area
+        pdf_preview_group = QGroupBox("PDFプレビュー")
+        pdf_preview_layout = QVBoxLayout()
+
+        # Toolbar
+        self.toolbar = QToolBar()
+        self.zoom_in_action = QAction("Zoom In", self)
+        self.zoom_in_action.triggered.connect(self.zoom_in)
+        self.toolbar.addAction(self.zoom_in_action)
+
+        self.zoom_out_action = QAction("Zoom Out", self)
+        self.zoom_out_action.triggered.connect(self.zoom_out)
+        self.toolbar.addAction(self.zoom_out_action)
+
+        self.reset_zoom_action = QAction("Reset Zoom", self)
+        self.reset_zoom_action.triggered.connect(self.reset_zoom)
+        self.toolbar.addAction(self.reset_zoom_action)
+
+        pdf_preview_layout.addWidget(self.toolbar)
+
+        # Scroll Area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.pdf_preview_label = SelectablePdfPreviewLabel()
+        self.pdf_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pdf_preview_label.selection_changed.connect(self.on_region_selected)
+        self.scroll_area.setWidget(self.pdf_preview_label)
+        pdf_preview_layout.addWidget(self.scroll_area)
+
+        pdf_preview_group.setLayout(pdf_preview_layout)
+
+        
+
+        # Bottom section: Data Input
+        data_input_group = QGroupBox("データ入力")
+        form_layout = QFormLayout()
+
+        self.year_edit = QLineEdit()
+        self.transaction_type_expenditure_radio = QRadioButton("支出情報")
+        self.transaction_type_income_radio = QRadioButton("収入情報")
+        self.document_type_combo = QComboBox()
+        self.doc_id_label = QLabel("(自動採番)")
+        self.issue_date_edit = QLineEdit()
+        self.client_name_edit = QLineEdit()
+        self.amount_edit = QLineEdit()
+        self.memo_edit = QTextEdit()
+        self.filename_preview_label = QLabel("(ファイル名プレビュー)")
+        self.save_button = QPushButton("保存して次へ")
+        self.save_button.clicked.connect(self.save_and_next)
+
+        # --- Connect focus events ---
+        self.year_edit.installEventFilter(self)
+        self.issue_date_edit.installEventFilter(self)
+        self.client_name_edit.installEventFilter(self)
+        self.amount_edit.installEventFilter(self)
+
+        # --- Connect signals for data updates and save button state ---
+        self.year_edit.textChanged.connect(self.check_save_button_state)
+        self.issue_date_edit.textChanged.connect(self.check_save_button_state)
+        self.client_name_edit.textChanged.connect(self.check_save_button_state)
+        self.amount_edit.textChanged.connect(self.check_save_button_state)
+        
+        self.year_edit.textChanged.connect(self.update_doc_id)
+        self.document_type_combo.currentIndexChanged.connect(self.update_doc_id)
+
+        self.issue_date_edit.textChanged.connect(self.update_filename_preview)
+        self.client_name_edit.textChanged.connect(self.update_filename_preview)
+        self.amount_edit.textChanged.connect(self.update_filename_preview)
+
+        transaction_radio_layout = QHBoxLayout()
+        transaction_radio_layout.addWidget(self.transaction_type_expenditure_radio)
+        transaction_radio_layout.addWidget(self.transaction_type_income_radio)
+        self.transaction_type_expenditure_radio.setChecked(True)
+        self.transaction_type_expenditure_radio.toggled.connect(self.update_document_types)
+        self.transaction_type_expenditure_radio.toggled.connect(self.update_doc_id)
+
+        self.update_document_types()
+
+        form_layout.addRow("年度:", self.year_edit)
+        form_layout.addRow("取引区分:", transaction_radio_layout)
+        form_layout.addRow("書類種別:", self.document_type_combo)
+        form_layout.addRow("通し番号:", self.doc_id_label)
+        form_layout.addRow("発行日:", self.issue_date_edit)
+        form_layout.addRow("取引先名:", self.client_name_edit)
+        form_layout.addRow("金額(税込):", self.amount_edit)
+        form_layout.addRow("メモ:", self.memo_edit)
+        form_layout.addRow("ファイル名:", self.filename_preview_label)
+        form_layout.addRow(self.save_button)
+        data_input_group.setLayout(form_layout)
+        left_column_layout.addWidget(data_input_group, 2) # Stretch factor 2 for data input (2/3 of left column)
+
+        
+        # Add columns to main layout
+        main_layout.addLayout(left_column_layout, 1) # Left column takes 1/3 of width
+        main_layout.addWidget(pdf_preview_group, 2) # Right column takes 2/3 of width
+        
+        self.setLayout(main_layout)
+
+        # Load last inputs
+        last_year = self.config_manager.get_last_input('year')
+        if last_year:
+            self.year_edit.setText(last_year)
+        
+        last_doc_type_index = self.config_manager.get_last_input('doc_type_index')
+        if last_doc_type_index is not None:
+            try:
+                self.document_type_combo.setCurrentIndex(int(last_doc_type_index))
+            except ValueError:
+                pass # Fallback to default if invalid index
+
+        self.check_save_button_state()
+        self.update_doc_id()
+
+    def open_file_dialog(self):
+        files, _ = QFileDialog.getOpenFileNames(self, "PDFファイルを選択", "", "PDF Files (*.pdf)")
+        if files:
+            for file in files:
+                self.add_file_to_list(file)
+
+        # Removed: self.pdf_preview_label.selection_changed.connect(self.on_region_selected)
+
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.Type.FocusIn:
+            if source in [self.year_edit, self.issue_date_edit, self.client_name_edit, self.amount_edit]:
+                self.set_active_field(source)
+        return super().eventFilter(source, event)
+
+    def set_active_field(self, field):
+        for f in [self.year_edit, self.issue_date_edit, self.client_name_edit, self.amount_edit]:
+            f.setStyleSheet("")
+        field.setStyleSheet("background-color: #e0e0ff;")
+        self.active_field = field
+
+    def add_file_to_list(self, file_path):
+        # Prevent duplicate file registration
+        for i in range(self.file_list_widget.count()):
+            if self.file_list_widget.item(i).text() == file_path:
+                QMessageBox.warning(self, "警告", "このファイルは既にリストに追加されています。")
+                return
+        self.file_list_widget.addItem(file_path)
+
+    def clear_overlays(self):
+        for label in self.overlay_labels:
+            label.deleteLater()
+        self.overlay_labels.clear()
+
+    def display_pdf_preview(self, current, previous):
+        self.clear_overlays()
+        if current is None or ("[処理済]" in current.text() and current.foreground() == QColor('gray')):
+            self.pdf_preview_label.clear()
+            self.pdf_preview_label.setText("ここにPDFのプレビューが表示されます")
+            return
+        
+        file_path = current.text()
+        pdf_processor = PdfProcessor(file_path)
+        if not pdf_processor.open():
+            self.pdf_preview_label.setText("PDFを開けませんでした")
+            return
+
+        fitz_pixmap_high_res = pdf_processor.get_page_as_pixmap(0, scale_factor=self.ocr_scale_factor)
+        
+        fitz_pixmap_display = pdf_processor.get_page_as_pixmap(0, scale_factor=self.zoom_level) # Get display resolution
+        pdf_processor.close() # Close after getting both pixmaps
+
+        if not fitz_pixmap_high_res or not fitz_pixmap_display:
+            self.pdf_preview_label.setText("プレビューの生成に失敗しました")
+            return
+
+        qimage_high_res = QImage(fitz_pixmap_high_res.samples, fitz_pixmap_high_res.width, fitz_pixmap_high_res.height, fitz_pixmap_high_res.stride, QImage.Format.Format_RGB888)
+        pil_image_high_res = ImageQt.fromqimage(qimage_high_res) # Use ImageQt.fromqimage
+
+        qimage_display = QImage(fitz_pixmap_display.samples, fitz_pixmap_display.width, fitz_pixmap_display.height, fitz_pixmap_display.stride, QImage.Format.Format_RGB888)
+        original_display_pixmap = QPixmap.fromImage(qimage_display)
+
+        self.pdf_preview_label.setPixmap(original_display_pixmap)
+
+        self.pixmap_display_scale_factor = original_display_pixmap.width() / fitz_pixmap_high_res.width
+
+        
+
+    def zoom_in(self):
+        self.zoom_level *= 1.2
+        self.display_pdf_preview(self.file_list_widget.currentItem(), None)
+
+    def zoom_out(self):
+        self.zoom_level /= 1.2
+        self.display_pdf_preview(self.file_list_widget.currentItem(), None)
+
+    def reset_zoom(self):
+        self.zoom_level = 1.0
+        self.display_pdf_preview(self.file_list_widget.currentItem(), None)
+
+    def on_region_selected(self, selection_rect):
+        if self.active_field is None:
+            return
+
+        # Get the high-resolution image
+        current_item = self.file_list_widget.currentItem()
+        if current_item is None:
+            return
+        file_path = current_item.text()
+        pdf_processor = PdfProcessor(file_path)
+        if not pdf_processor.open():
+            return
+        fitz_pixmap_high_res = pdf_processor.get_page_as_pixmap(0, scale_factor=self.ocr_scale_factor)
+        pdf_processor.close()
+        if not fitz_pixmap_high_res:
+            return
+        qimage_high_res = QImage(fitz_pixmap_high_res.samples, fitz_pixmap_high_res.width, fitz_pixmap_high_res.height, fitz_pixmap_high_res.stride, QImage.Format.Format_RGB888)
+        pil_image_high_res = ImageQt.fromqimage(qimage_high_res)
+
+        # Scale the selection rectangle to the high-resolution image
+        pixmap_width = self.pdf_preview_label.pixmap().width()
+        pixmap_height = self.pdf_preview_label.pixmap().height()
+        
+        # Ensure pixmap_width and pixmap_height are not zero to avoid division by zero
+        if pixmap_width == 0 or pixmap_height == 0:
+            return
+
+        x_scale = fitz_pixmap_high_res.width / pixmap_width
+        y_scale = fitz_pixmap_high_res.height / pixmap_height
+
+        x = int(selection_rect.x() * x_scale)
+        y = int(selection_rect.y() * y_scale)
+        w = int(selection_rect.width() * x_scale)
+        h = int(selection_rect.height() * y_scale)
+
+        # Validate cropped region dimensions
+        if w <= 0 or h <= 0:
+            return
+
+        # Ensure crop coordinates are within image bounds
+        img_width, img_height = pil_image_high_res.size
+        x = max(0, x)
+        y = max(0, y)
+        w = min(w, img_width - x)
+        h = min(h, img_height - y)
+
+        if w <= 0 or h <= 0:
+            return
+
+        # Crop the high-resolution image
+        cropped_image = pil_image_high_res.crop((x, y, x + w, y + h))
+
+        # Perform OCR on the cropped image
+        ocr_processor = OcrProcessor(cropped_image)
+        ocr_results = ocr_processor.get_text_and_boxes()
+        if ocr_results:
+            text = "".join([result['text'] for result in ocr_results]) # Remove spaces
+        else:
+            text = ""
+
+        # Set the text to the active field
+        if self.active_field is self.issue_date_edit:
+            converted_date = self.date_converter.to_seireki(text)
+            self.active_field.setText(converted_date)
+        else:
+            self.active_field.setText(text)
+        self.update_filename_preview() # Explicitly update filename preview after setting text
+
+    
+
+    def update_document_types(self):
+        self.document_type_combo.clear()
+        if self.transaction_type_expenditure_radio.isChecked():
+            self.document_type_combo.addItems(["01.注文書・契約書", "02.見積書(確定版)", "03.請求書", "04.領収証", "05.振込明細", "06.引落通知", "07.その他"])
+        else:
+            self.document_type_combo.addItems(["01.注文書・契約書", "02.見積書(確定版)", "03.請求書", "04.領収証", "05.振込通知", "06.その他"])
+        self.update_doc_id()
+
+    def update_doc_id(self):
+        year_raw = self.year_edit.text()
+        if not year_raw:
+            self.doc_id_label.setText("(年度未入力)")
+            return
+        try:
+            year_int = int(year_raw)
+            formatted_year = f"{year_int}年度"
+        except ValueError:
+            self.doc_id_label.setText("(年度形式エラー)")
+            return
+
+        transaction_type = "支出情報" if self.transaction_type_expenditure_radio.isChecked() else "収入情報"
+        doc_type = self.document_type_combo.currentText()
+        if not doc_type:
+            self.doc_id_label.setText("(書類種別未選択)")
+            return
+        next_id = self.metadata_manager.get_next_doc_id(formatted_year, transaction_type, doc_type)
+        self.doc_id_label.setText(next_id)
+        self.update_filename_preview() # Trigger preview update
+
+    def update_filename_preview(self, *args):
+        doc_id = self.doc_id_label.text()
+        issue_date = self.issue_date_edit.text()
+        client_name = self.client_name_edit.text()
+        
+        is_valid_amount, extracted_amount = self.validator.is_valid_amount(self.amount_edit.text())
+        if is_valid_amount:
+            amount = str(extracted_amount)
+        else:
+            amount = "0"
+
+        doc_id = doc_id if "(" not in doc_id else "XXXX"
+        issue_date = issue_date if issue_date else "YYYYMMDD"
+        client_name = client_name if client_name else "取引先名"
+
+        filename = f"{doc_id}_{issue_date}_{amount}_{client_name}.pdf"
+        self.filename_preview_label.setText(filename)
+
+    def check_save_button_state(self):
+        year = self.year_edit.text()
+        issue_date = self.issue_date_edit.text()
+        client_name = self.client_name_edit.text()
+        amount = self.amount_edit.text()
+
+        enabled = bool(year and issue_date and client_name and amount)
+        self.save_button.setEnabled(enabled)
+
+    def save_and_next(self):
+        current_item = self.file_list_widget.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "注意", "処理対象のファイルが選択されていません。")
+            return
+        source_path = current_item.text()
+        if "[処理済]" in source_path:
+            QMessageBox.information(self, "情報", "このファイルは既に処理済みです。")
+            return
+
+        year_raw = self.year_edit.text()
+        issue_date = self.issue_date_edit.text()
+        client_name_raw = self.client_name_edit.text()
+        amount_raw = self.amount_edit.text()
+        memo = self.memo_edit.toPlainText()
+        doc_type = self.document_type_combo.currentText()
+        transaction_type = "支出情報" if self.transaction_type_expenditure_radio.isChecked() else "収入情報"
+        doc_id = self.doc_id_label.text()
+        root_path = self.config_manager.get('Paths', 'root_save_directory')
+
+        # Validate and get extracted amount
+        is_valid_amount, extracted_amount = self.validator.is_valid_amount(amount_raw)
+        if not is_valid_amount:
+            QMessageBox.warning(self, "入力エラー", "金額には半角数字のみ入力してください。")
+            return
+
+        # Sanitize client_name for filename
+        sanitized_client_name = re.sub(r'[\\/:*?"<>|]', '', client_name_raw) # Remove invalid filename characters
+
+        # Convert year to Western year and append "年度"
+        try:
+            year_int = int(year_raw)
+            formatted_year = f"{year_int}年度"
+        except ValueError:
+            QMessageBox.warning(self, "入力エラー", "年度は半角数字で入力してください。")
+            return
+
+        # Construct new filename using extracted and sanitized values
+        new_filename = f"{doc_id}_{issue_date}_{extracted_amount}_{sanitized_client_name}.pdf"
+        target_dir = os.path.join(root_path, formatted_year, transaction_type, doc_type)
+        target_path = os.path.normpath(os.path.join(target_dir, new_filename))
+
+        message = f"""以下の内容で保存しますか？
+
+元ファイル: {os.path.basename(source_path)}
+保存先: {target_path}
+
+年度: {year_raw}
+取引区分: {transaction_type}
+書類種別: {doc_type}
+発行日: {issue_date}
+取引先: {client_name_raw}
+金額: {amount_raw}
+"""
+
+        reply = QMessageBox.question(self, '保存確認', message, 
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+                                     QMessageBox.StandardButton.No)
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                # Validation
+                if not self.validator.is_valid_date(issue_date):
+                    QMessageBox.warning(self, "入力エラー", "発行日の形式が正しくありません。(YYYYMMDD)")
+                    return
+
+                os.makedirs(target_dir, exist_ok=True)
+                shutil.copy(source_path, target_path)
+
+                metadata = {
+                    'doc_id': doc_id,
+                    'category': transaction_type,
+                    'doc_type': doc_type,
+                    'issue_date': issue_date,
+                    'client_name': client_name_raw,
+                    'amount': extracted_amount,
+                    'memo': memo,
+                    'file_path': os.path.relpath(target_path, os.path.join(root_path, formatted_year))
+                }
+                self.metadata_manager.add_entry(formatted_year, metadata)
+
+                QMessageBox.information(self, "成功", f"ファイルを保存しました。\n{target_path}")
+                
+                current_item.setText(f"[処理済] {os.path.basename(source_path)}")
+                current_item.setForeground(QColor('gray'))
+                self.clear_input_fields()
+                self.select_next_file()
+
+                # Save last inputs
+                self.config_manager.set_last_input('year', year_raw)
+                self.config_manager.set_last_input('doc_type_index', str(self.document_type_combo.currentIndex()))
+
+            except Exception as e:
+                QMessageBox.critical(self, "エラー", f"ファイルの保存に失敗しました。\n{e}")
+
+    def clear_input_fields(self):
+        self.issue_date_edit.clear()
+        self.client_name_edit.clear()
+        self.amount_edit.clear()
+        self.memo_edit.clear()
+
+    def select_next_file(self):
+        current_row = self.file_list_widget.currentRow()
+        for i in range(self.file_list_widget.count()):
+            next_item = self.file_list_widget.item(i)
+            if "[処理済]" not in next_item.text():
+                self.file_list_widget.setCurrentItem(next_item)
+                return
+        self.file_list_widget.setCurrentRow(-1)
