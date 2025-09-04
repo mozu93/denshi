@@ -35,9 +35,20 @@ pip install -r requirements.txt
 ### 2. Tesseract OCRのインストール
 
 #### Windows
-1. [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) からインストーラーをダウンロード
-2. インストール後、パスを通す
-3. 日本語言語データ `jpn.traineddata` をインストール
+1.  **インストーラーのダウンロード:**
+    [Tesseract OCRの公式ダウンロードページ](https://tesseract-ocr.github.io/tessdoc/Downloads.html) から、Windows向けの64-bitインストーラー（例: `tesseract-ocr-w64-setup-vX.XX.XX.exe`）をダウンロードします。
+2.  **インストール:**
+    インストーラーを実行し、指示に従ってインストールを進めます。
+    *   言語選択では「English」を選択します。
+    *   「Additional language data」の項目で、「Japanese script」「Japanese vertical script」「Japanese」「Japanese (vertical)」にチェックを入れて、日本語言語データをインストールします。
+3.  **環境変数PATHの設定:**
+    インストールが完了したら、Tesseract-OCRがインストールされたディレクトリ（例: `C:\Program Files\Tesseract-OCR`）をシステムの環境変数PATHに追加します。
+    *   「コントロールパネル」→「システムとセキュリティ」→「システム」→「システムの詳細設定」→「環境変数」を開きます。
+    *   「Path」を選択し、「編集」をクリックします。
+    *   Tesseract-OCRのインストールパス（例: `C:\Program Files\Tesseract-OCR`）を追加します。
+4.  **動作確認:**
+    コマンドプロンプトを開き、`tesseract --version` と入力してTesseractが正しくインストールされているか確認します。
+    また、`tesseract <画像ファイル名> stdout -l jpn` と入力して、日本語の画像認識が機能するかテストできます。
 
 #### macOS
 ```bash
