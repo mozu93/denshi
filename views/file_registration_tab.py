@@ -237,7 +237,13 @@ class FileRegistrationTab(QWidget):
             if self.file_list_widget.item(i).text() == file_path:
                 QMessageBox.warning(self, "警告", "このファイルは既にリストに追加されています。")
                 return
+
+        was_empty = self.file_list_widget.count() == 0 # Check if list is empty before adding
+
         self.file_list_widget.addItem(file_path)
+
+        if was_empty: # If it was empty, the newly added item is the first
+            self.file_list_widget.setCurrentRow(0) # Select the first item
 
     def clear_overlays(self):
         for label in self.overlay_labels:

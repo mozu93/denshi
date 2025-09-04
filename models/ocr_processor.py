@@ -41,5 +41,7 @@ class OcrProcessor:
                     })
             return results
         except pytesseract.TesseractNotFoundError:
-            print("Tesseract is not installed or not in your PATH")
-            return None
+            # Re-raise the exception to be caught by the UI layer
+            raise pytesseract.TesseractNotFoundError(
+                "Tesseract is not installed or not in your PATH. OCR機能を利用するにはインストールが必要です。"
+            )

@@ -25,7 +25,7 @@ class MetadataManager:
     def save_df(self, year_nendo, df):
         csv_path = self._get_csv_path(year_nendo)
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-        df.to_csv(csv_path, index=False, encoding='utf-8-sig') # BOM付きUTF-8
+        df.to_csv(csv_path, index=False, encoding='utf-8-sig')
 
     def add_entry(self, year_nendo, data):
         df = self.load_df(year_nendo)
@@ -57,14 +57,13 @@ class MetadataManager:
         return f"{max_id + 1:03d}"
 
     def rebuild_index(self):
-        all_metadata = []
+        """Scans all managed directories, parses filenames, and overwrites the index.csv for each year."""
         for year_nendo_dir in os.listdir(self.root_path):
-            # Skip non-directory entries or entries not matching the "YYYY年度" pattern
-            if not os.path.isdir(os.path.join(self.root_path, year_nendo_dir)) or not re.match(r'^\d{4}年度$', year_nendo_dir):
-                continue
-            
             year_path = os.path.join(self.root_path, year_nendo_dir)
+            if not os.path.isdir(year_path) or not re.match(r'^\d{4}年度$', year_nendo_dir):
+                continue
 
+            current_year_metadata = []
             for category_dir in os.listdir(year_path):
                 category_path = os.path.join(year_path, category_dir)
                 if not os.path.isdir(category_path):
@@ -76,7 +75,7 @@ class MetadataManager:
                         continue
 
                     for filename in os.listdir(doc_type_path):
-                        if not filename.endswith('.pdf'):
+                        if not filename.lower().endswith('.pdf'):
                             continue
 
                         file_path = os.path.join(doc_type_path, filename)
@@ -86,28 +85,116 @@ class MetadataManager:
 
                         doc_id, issue_date, amount, client_name = parts
                         
-                        metadata = {
-                            'id': str(uuid.uuid4()),
-                            'doc_id': doc_id,
-                            'category': category_dir,
-                            'doc_type': doc_type_dir,
-                            'issue_date': issue_date,
-                            'client_name': client_name,
-                            'amount': int(amount),
-                            'memo': '',
-                            'file_path': os.path.relpath(file_path, year_path),
-                            'created_at': datetime.now().isoformat(),
-                            'updated_at': datetime.now().isoformat()
-                        }
-                        all_metadata.append(metadata)
+                        try:
+                            metadata = {
+                                'id': str(uuid.uuid4()),
+                                'doc_id': doc_id,
+                                'category': category_dir,
+                                'doc_type': doc_type_dir,
+                                'issue_date': issue_date,
+                                'client_name': client_name,
+                                'amount': int(amount),
+                                'memo': '', # Memos are lost on rebuild as per spec
+                                'file_path': os.path.relpath(file_path, year_path),
+                                'created_at': datetime.now().isoformat(),
+                                'updated_at': datetime.now().isoformat()
+                            }
+                            current_year_metadata.append(metadata)
+                        except (ValueError, TypeError):
+                            print(f"Skipping file with invalid amount: {filename}")
+                            continue
+            
+            df = pd.DataFrame(current_year_metadata)
+            self.save_df(year_nendo_dir, df)
 
-        df = pd.DataFrame(all_metadata)
-        # Group by year_nendo from file_path for saving
-        if not df.empty:
-            df['year_nendo'] = df['file_path'].apply(lambda x: os.path.normpath(x).split(os.sep)[0])
-            for year_nendo, group in df.groupby('year_nendo'):
-                self.save_df(year_nendo, group.drop(columns=['year_nendo']))
-        else:
-            # If no files found, ensure existing index.csv files are cleared or handled as per requirement
-            # For now, we'll just pass, assuming no old index files means no data.
-            pass
+    def search_entries(self, year_nendo, doc_type=None, client_name=None, date_from=None, date_to=None, amount_from=None, amount_to=None, memo=None):
+        df = self.load_df(year_nendo)
+        if df.empty:
+            return df
+
+        df['issue_date'] = pd.to_numeric(df['issue_date'].astype(str), errors='coerce')
+        df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
+
+        if doc_type and doc_type != "すべて":
+            df = df[df['doc_type'] == doc_type]
+        
+        if client_name:
+            df = df[df['client_name'].str.contains(client_name, na=False)]
+            
+        if memo:
+            df = df[df['memo'].str.contains(memo, na=False)]
+
+        if date_from:
+            date_from_int = int(date_from.toString("yyyyMMdd"))
+            df = df[df['issue_date'] >= date_from_int]
+
+        if date_to:
+            date_to_int = int(date_to.toString("yyyyMMdd"))
+            df = df[df['issue_date'] <= date_to_int]
+
+        if amount_from:
+            try:
+                df = df[df['amount'] >= int(amount_from)]
+            except (ValueError, TypeError):
+                pass
+
+        if amount_to:
+            try:
+                df = df[df['amount'] >= int(amount_to)]
+            except (ValueError, TypeError):
+                pass
+                
+        return df
+
+    def get_entry_by_id(self, year_nendo, record_id):
+        df = self.load_df(year_nendo)
+        if df.empty:
+            return None
+        
+        df['id'] = df['id'].astype(str)
+        record_id = str(record_id)
+
+        result = df[df['id'] == record_id]
+        if not result.empty:
+            return result.iloc[0].to_dict()
+        return None
+
+    def delete_entry(self, year_nendo, record_id):
+        df = self.load_df(year_nendo)
+        if df.empty:
+            return None
+
+        df['id'] = df['id'].astype(str)
+        record_id = str(record_id)
+
+        record_to_delete = df[df['id'] == record_id]
+        if record_to_delete.empty:
+            return None
+
+        file_path = record_to_delete.iloc[0]['file_path']
+        df = df[df['id'] != record_id]
+        self.save_df(year_nendo, df)
+        return file_path
+
+    def update_entry(self, year_nendo, record_id, new_data):
+        df = self.load_df(year_nendo)
+        if df.empty:
+            return False
+
+        df['id'] = df['id'].astype(str)
+        record_id = str(record_id)
+
+        record_index = df.index[df['id'] == record_id].tolist()
+        if not record_index:
+            return False
+        
+        index = record_index[0]
+
+        for key, value in new_data.items():
+            if key in df.columns:
+                df.loc[index, key] = value
+        
+        df.loc[index, 'updated_at'] = datetime.now().isoformat()
+
+        self.save_df(year_nendo, df)
+        return True

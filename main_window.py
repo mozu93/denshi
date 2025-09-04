@@ -23,7 +23,7 @@ class MainWindow(QMainWindow):
         self.config_manager = ConfigManager()
         self.metadata_manager = MetadataManager(self.config_manager.get('Paths', 'root_save_directory'))
         self.registration_tab = FileRegistrationTab(config_manager=self.config_manager, metadata_manager=self.metadata_manager)
-        self.search_tab = FileSearchTab()
+        self.search_tab = FileSearchTab(metadata_manager=self.metadata_manager)
         self.tabs.addTab(self.registration_tab, "ファイル登録モード")
         self.tabs.addTab(self.search_tab, "ファイル検索モード")
         layout.addWidget(self.tabs)
