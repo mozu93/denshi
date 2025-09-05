@@ -8,6 +8,10 @@ class MetadataManager:
     def __init__(self, root_path):
         self.root_path = root_path
 
+    def update_root_directory(self, new_root_path):
+        """Updates the root directory path."""
+        self.root_path = new_root_path
+
     def _get_csv_path(self, year_nendo):
         return os.path.join(self.root_path, year_nendo, 'index.csv')
 

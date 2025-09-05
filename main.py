@@ -14,6 +14,11 @@ def get_base_path():
 
 def main():
     app = QApplication(sys.argv)
+
+    # Set global font size
+    font = app.font()
+    font.setPointSize(14)
+    app.setFont(font)
     
     base_path = get_base_path()
     config_path = os.path.join(base_path, 'config.ini')

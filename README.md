@@ -146,7 +146,7 @@ pyinstaller --noconsole --onefile --add-data "config.ini;." --add-data "電子�
 root_save_directory = 電子帳簿保存
 
 [Tesseract]
-path = C:\ Program Files\Tesseract-OCR\tesseract.exe
+path = C:\Program Files\Tesseract-OCR\tesseract.exe
 
 [FolderNames_Expenditure]
 order = 01.注文書・契約書

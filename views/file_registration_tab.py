@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QVBoxLayout, QGroupBox, QRadioButton, QComboBox, QTextEdit,
     QSplitter, QMessageBox, QFileDialog, QScrollArea, QToolBar
 )
-from PyQt6.QtGui import QPixmap, QImage, QColor, QPainter, QPen, QAction
+from PyQt6.QtGui import QPixmap, QImage, QColor, QPainter, QPen, QAction, QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QBuffer, QIODevice, QPoint, QRect, QSize
 from PIL import Image, ImageQt # Import ImageQt
 
@@ -76,65 +76,33 @@ class FileRegistrationTab(QWidget):
         self.metadata_manager = metadata_manager
         self.active_field = None
         self.overlay_labels = []
-        self.pixmap_display_scale_factor = 1.0 # Scale factor for displaying pixmap
-        self.ocr_scale_factor = 4 # Scale factor for OCR input image
+        self.pixmap_display_scale_factor = 1.0
+        self.ocr_scale_factor = 4
         self.zoom_level = 1.0
         self.date_converter = DateConverter()
         self.validator = Validator()
 
-        # --- Layout --- 
-        main_layout = QHBoxLayout(self) # Main layout is now horizontal
+        self._create_widgets()
+        self._setup_layout()
+        self._connect_signals()
+        self._load_initial_state()
 
-        # Top section: File List and PDF Preview
-        # Left Column: File List and Data Input
-        left_column_layout = QVBoxLayout()
-
-        # File List Group
-        file_list_group = QGroupBox("登録ファイル")
-        file_list_layout = QVBoxLayout()
+    def _create_widgets(self):
+        """Create all the widgets for the tab."""
         self.file_list_widget = QListWidget()
-        self.file_list_widget.currentItemChanged.connect(self.display_pdf_preview)
-        file_list_layout.addWidget(self.file_list_widget)
-        file_list_group.setLayout(file_list_layout)
-        left_column_layout.addWidget(file_list_group, 1) # Stretch factor 1 for file list (1/3 of left column)
-
-        # PDF Preview Area
-        pdf_preview_group = QGroupBox("PDFプレビュー")
-        pdf_preview_layout = QVBoxLayout()
-
-        # Toolbar
-        self.toolbar = QToolBar()
-        self.zoom_in_action = QAction("Zoom In", self)
-        self.zoom_in_action.triggered.connect(self.zoom_in)
-        self.toolbar.addAction(self.zoom_in_action)
-
-        self.zoom_out_action = QAction("Zoom Out", self)
-        self.zoom_out_action.triggered.connect(self.zoom_out)
-        self.toolbar.addAction(self.zoom_out_action)
-
-        self.reset_zoom_action = QAction("Reset Zoom", self)
-        self.reset_zoom_action.triggered.connect(self.reset_zoom)
-        self.toolbar.addAction(self.reset_zoom_action)
-
-        pdf_preview_layout.addWidget(self.toolbar)
-
-        # Scroll Area
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.pdf_preview_label = SelectablePdfPreviewLabel()
-        self.pdf_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pdf_preview_label.selection_changed.connect(self.on_region_selected)
-        self.scroll_area.setWidget(self.pdf_preview_label)
-        pdf_preview_layout.addWidget(self.scroll_area)
-
-        pdf_preview_group.setLayout(pdf_preview_layout)
-
         
+        # Toolbar widgets
+        self.toolbar = QToolBar()
+        self.zoom_in_action = QAction(QIcon.fromTheme("zoom-in"), "Zoom In", self)
+        self.zoom_out_action = QAction(QIcon.fromTheme("zoom-out"), "Zoom Out", self)
+        self.reset_zoom_action = QAction(QIcon.fromTheme("zoom-original"), "Reset Zoom", self)
 
-        # Bottom section: Data Input
-        data_input_group = QGroupBox("データ入力")
-        form_layout = QFormLayout()
+        # PDF Preview widgets
+        self.scroll_area = QScrollArea()
+        self.pdf_preview_label = SelectablePdfPreviewLabel()
 
+        # Data input widgets
+        self.ocr_instruction_label = QLabel("入力したい項目を選択後、右のPDF上で範囲をドラッグしてOCRで読み取れます。")
         self.year_edit = QLineEdit()
         self.transaction_type_expenditure_radio = QRadioButton("支出情報")
         self.transaction_type_income_radio = QRadioButton("収入情報")
@@ -146,36 +114,26 @@ class FileRegistrationTab(QWidget):
         self.memo_edit = QTextEdit()
         self.filename_preview_label = QLabel("(ファイル名プレビュー)")
         self.save_button = QPushButton("保存して次へ")
-        self.save_button.clicked.connect(self.save_and_next)
 
-        # --- Connect focus events ---
-        self.year_edit.installEventFilter(self)
-        self.issue_date_edit.installEventFilter(self)
-        self.client_name_edit.installEventFilter(self)
-        self.amount_edit.installEventFilter(self)
+    def _setup_layout(self):
+        """Set up the layout of the tab."""
+        main_layout = QHBoxLayout(self)
 
-        # --- Connect signals for data updates and save button state ---
-        self.year_edit.textChanged.connect(self.check_save_button_state)
-        self.issue_date_edit.textChanged.connect(self.check_save_button_state)
-        self.client_name_edit.textChanged.connect(self.check_save_button_state)
-        self.amount_edit.textChanged.connect(self.check_save_button_state)
-        
-        self.year_edit.textChanged.connect(self.update_doc_id)
-        self.document_type_combo.currentIndexChanged.connect(self.update_doc_id)
+        # --- Left Column ---
+        left_column_layout = QVBoxLayout()
+        file_list_group = QGroupBox("登録ファイル")
+        file_list_layout = QVBoxLayout()
+        file_list_layout.addWidget(self.file_list_widget)
+        file_list_group.setLayout(file_list_layout)
+        left_column_layout.addWidget(file_list_group, 1)
 
-        self.issue_date_edit.textChanged.connect(self.update_filename_preview)
-        self.client_name_edit.textChanged.connect(self.update_filename_preview)
-        self.amount_edit.textChanged.connect(self.update_filename_preview)
-
+        data_input_group = QGroupBox("データ入力")
+        form_layout = QFormLayout()
+        self.ocr_instruction_label.setWordWrap(True)
+        form_layout.addRow(self.ocr_instruction_label)
         transaction_radio_layout = QHBoxLayout()
         transaction_radio_layout.addWidget(self.transaction_type_expenditure_radio)
         transaction_radio_layout.addWidget(self.transaction_type_income_radio)
-        self.transaction_type_expenditure_radio.setChecked(True)
-        self.transaction_type_expenditure_radio.toggled.connect(self.update_document_types)
-        self.transaction_type_expenditure_radio.toggled.connect(self.update_doc_id)
-
-        self.update_document_types()
-
         form_layout.addRow("年度:", self.year_edit)
         form_layout.addRow("取引区分:", transaction_radio_layout)
         form_layout.addRow("書類種別:", self.document_type_combo)
@@ -187,16 +145,64 @@ class FileRegistrationTab(QWidget):
         form_layout.addRow("ファイル名:", self.filename_preview_label)
         form_layout.addRow(self.save_button)
         data_input_group.setLayout(form_layout)
-        left_column_layout.addWidget(data_input_group, 2) # Stretch factor 2 for data input (2/3 of left column)
+        left_column_layout.addWidget(data_input_group, 2)
 
-        
+        # --- Right Column ---
+        right_column_layout = QVBoxLayout()
+        self.toolbar.addAction(self.zoom_in_action)
+        self.toolbar.addAction(self.zoom_out_action)
+        self.toolbar.addAction(self.reset_zoom_action)
+        right_column_layout.addWidget(self.toolbar)
+
+        pdf_preview_group = QGroupBox("PDFプレビュー")
+        pdf_preview_layout = QVBoxLayout()
+        self.scroll_area.setWidgetResizable(True)
+        self.pdf_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.scroll_area.setWidget(self.pdf_preview_label)
+        pdf_preview_layout.addWidget(self.scroll_area)
+        pdf_preview_group.setLayout(pdf_preview_layout)
+        right_column_layout.addWidget(pdf_preview_group)
+
         # Add columns to main layout
-        main_layout.addLayout(left_column_layout, 1) # Left column takes 1/3 of width
-        main_layout.addWidget(pdf_preview_group, 2) # Right column takes 2/3 of width
-        
+        main_layout.addLayout(left_column_layout, 1)
+        main_layout.addLayout(right_column_layout, 2)
         self.setLayout(main_layout)
 
-        # Load last inputs
+    def _connect_signals(self):
+        """Connect all signals to slots."""
+        self.file_list_widget.currentItemChanged.connect(self.display_pdf_preview)
+        self.pdf_preview_label.selection_changed.connect(self.on_region_selected)
+        self.save_button.clicked.connect(self.save_and_next)
+
+        # Zoom actions
+        self.zoom_in_action.triggered.connect(self.zoom_in)
+        self.zoom_out_action.triggered.connect(self.zoom_out)
+        self.reset_zoom_action.triggered.connect(self.reset_zoom)
+
+        # Focus events for active field highlighting
+        self.year_edit.installEventFilter(self)
+        self.issue_date_edit.installEventFilter(self)
+        self.client_name_edit.installEventFilter(self)
+        self.amount_edit.installEventFilter(self)
+
+        # Automatic updates
+        self.year_edit.textChanged.connect(self.check_save_button_state)
+        self.issue_date_edit.textChanged.connect(self.check_save_button_state)
+        self.client_name_edit.textChanged.connect(self.check_save_button_state)
+        self.amount_edit.textChanged.connect(self.check_save_button_state)
+        self.year_edit.textChanged.connect(self.update_doc_id)
+        self.document_type_combo.currentIndexChanged.connect(self.update_doc_id)
+        self.issue_date_edit.textChanged.connect(self.update_filename_preview)
+        self.client_name_edit.textChanged.connect(self.update_filename_preview)
+        self.amount_edit.textChanged.connect(self.update_filename_preview)
+        self.transaction_type_expenditure_radio.toggled.connect(self.update_document_types)
+        self.transaction_type_expenditure_radio.toggled.connect(self.update_doc_id)
+
+    def _load_initial_state(self):
+        """Load last used inputs and set initial UI state."""
+        self.transaction_type_expenditure_radio.setChecked(True)
+        self.update_document_types()
+
         last_year = self.config_manager.get_last_input('year')
         if last_year:
             self.year_edit.setText(last_year)
@@ -206,7 +212,7 @@ class FileRegistrationTab(QWidget):
             try:
                 self.document_type_combo.setCurrentIndex(int(last_doc_type_index))
             except ValueError:
-                pass # Fallback to default if invalid index
+                pass
 
         self.check_save_button_state()
         self.update_doc_id()

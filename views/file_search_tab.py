@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QGridLayout, QLabel,
     QComboBox, QDateEdit, QMessageBox
 )
+from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import QDate
 from functools import partial
 
@@ -15,8 +16,9 @@ from views.edit_dialog import EditDialog
 from utils.validator import Validator
 
 class FileSearchTab(QWidget):
-    def __init__(self, metadata_manager, parent=None):
+    def __init__(self, config_manager, metadata_manager, parent=None):
         super().__init__(parent)
+        self.config_manager = config_manager
         self.metadata_manager = metadata_manager
         self.validator = Validator()
         
@@ -31,7 +33,8 @@ class FileSearchTab(QWidget):
         main_layout.addWidget(results_group)
         
         self.setLayout(main_layout)
-        self._populate_year_combo() # Populate the year combobox
+        self._populate_year_combo()
+        self._populate_doc_type_combo()
 
     def _create_search_group(self):
         """Creates the search conditions group box."""
@@ -41,7 +44,6 @@ class FileSearchTab(QWidget):
         # Search fields
         self.year_combo = QComboBox()
         self.doc_type_combo = QComboBox()
-        self.doc_type_combo.addItems(["すべて", "01.注文書・契約書", "02.見積書(確定版)", "03.請求書", "04.領収証", "05.振込明細", "06.引落通知", "07.その他"])
         self.client_name_edit = QLineEdit()
         self.date_from_edit = QDateEdit(calendarPopup=True)
         self.date_from_edit.setDate(QDate.currentDate().addYears(-1))
@@ -52,7 +54,6 @@ class FileSearchTab(QWidget):
         self.memo_edit = QLineEdit()
 
         # Connect returnPressed signal to search button click
-        # self.year_edit.returnPressed.connect(self._search_files) # Removed as it's now a QComboBox
         self.client_name_edit.returnPressed.connect(self._search_files)
         self.amount_from_edit.returnPressed.connect(self._search_files)
         self.amount_to_edit.returnPressed.connect(self._search_files)
@@ -72,9 +73,9 @@ class FileSearchTab(QWidget):
         layout.addLayout(form_layout, 0, 0, 1, 2)
 
         # Buttons
-        self.search_button = QPushButton("検索実行")
+        self.search_button = QPushButton(QIcon.fromTheme("edit-find"), "検索実行")
         self.search_button.clicked.connect(self._search_files)
-        self.clear_button = QPushButton("クリア")
+        self.clear_button = QPushButton(QIcon.fromTheme("edit-clear"), "クリア")
         self.clear_button.clicked.connect(self._clear_search_fields)
         
         layout.addWidget(self.search_button, 1, 0)
@@ -88,9 +89,20 @@ class FileSearchTab(QWidget):
         self.year_combo.clear()
         if available_years:
             self.year_combo.addItems(available_years)
-            self.year_combo.setCurrentIndex(0) # Select the newest year by default
+            self.year_combo.setCurrentIndex(0)
         else:
-            self.year_combo.addItem("年度なし") # Or a default message
+            self.year_combo.addItem("年度なし")
+
+    def _populate_doc_type_combo(self):
+        self.doc_type_combo.clear()
+        self.doc_type_combo.addItem("すべて")
+        
+        expenditure_types = self.config_manager.get_section('FolderNames_Expenditure').values()
+        income_types = self.config_manager.get_section('FolderNames_Income').values()
+        
+        all_types = sorted(list(set(list(expenditure_types) + list(income_types))))
+        
+        self.doc_type_combo.addItems(all_types)
 
     def _create_results_group(self):
         """Creates the search results group box."""
@@ -163,11 +175,11 @@ class FileSearchTab(QWidget):
 
             # Add buttons
             record_id = row.get('id')
-            edit_btn = QPushButton("編集")
+            edit_btn = QPushButton(QIcon.fromTheme("document-edit"), "編集")
             edit_btn.clicked.connect(partial(self._edit_row, record_id))
             self.results_table.setCellWidget(row_position, 6, edit_btn)
 
-            delete_btn = QPushButton("削除")
+            delete_btn = QPushButton(QIcon.fromTheme("edit-delete"), "削除")
             delete_btn.clicked.connect(partial(self._delete_row, record_id))
             self.results_table.setCellWidget(row_position, 7, delete_btn)
 
@@ -177,7 +189,7 @@ class FileSearchTab(QWidget):
             return
         
         record_id = record_id_item.text()
-        year_nendo = f"{self.year_edit.text()}年度"
+        year_nendo = self.year_combo.currentText()
 
         record = self.metadata_manager.get_entry_by_id(year_nendo, record_id)
         if not record:
@@ -210,11 +222,10 @@ class FileSearchTab(QWidget):
         if not record_id:
             return
 
-        year_text = self.year_edit.text()
-        if not year_text or not year_text.isdigit():
+        year_nendo = self.year_combo.currentText()
+        if not year_nendo or year_nendo == "年度なし":
             QMessageBox.warning(self, "エラー", "編集操作を行う前に、有効な年度を検索してください。")
             return
-        year_nendo = f"{year_text}年度"
 
         # Get current data
         current_data = self.metadata_manager.get_entry_by_id(year_nendo, record_id)
@@ -253,11 +264,10 @@ class FileSearchTab(QWidget):
         if not record_id:
             return
 
-        year_text = self.year_edit.text()
-        if not year_text or not year_text.isdigit():
+        year_nendo = self.year_combo.currentText()
+        if not year_nendo or year_nendo == "年度なし":
             QMessageBox.warning(self, "エラー", "削除操作を行う前に、有効な年度を検索してください。")
             return
-        year_nendo = f"{year_text}年度"
 
         reply = QMessageBox.question(self, '削除確認',
                                      f"ID: {record_id} のレコードと関連するPDFファイルを完全に削除しますか？\nこの操作は元に戻せません。",
@@ -285,7 +295,7 @@ class FileSearchTab(QWidget):
                 QMessageBox.critical(self, "削除エラー", f"削除中にエラーが発生しました。\n{e}")
 
     def _clear_search_fields(self):
-        self.year_edit.clear()
+        self.year_combo.setCurrentIndex(0)
         self.doc_type_combo.setCurrentIndex(0)
         self.client_name_edit.clear()
         self.date_from_edit.setDate(QDate.currentDate().addYears(-1))
@@ -294,3 +304,8 @@ class FileSearchTab(QWidget):
         self.amount_to_edit.clear()
         self.memo_edit.clear()
         self.results_table.setRowCount(0)
+
+    def refresh_data(self):
+        """Public method to allow refreshing the data in the combo boxes."""
+        self._populate_year_combo()
+        self._populate_doc_type_combo()
