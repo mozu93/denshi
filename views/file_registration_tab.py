@@ -77,7 +77,7 @@ class FileRegistrationTab(QWidget):
         self.active_field = None
         self.overlay_labels = []
         self.pixmap_display_scale_factor = 1.0 # Scale factor for displaying pixmap
-        self.ocr_scale_factor = 3 # Scale factor for OCR input image
+        self.ocr_scale_factor = 4 # Scale factor for OCR input image
         self.zoom_level = 1.0
         self.date_converter = DateConverter()
         self.validator = Validator()
@@ -315,9 +315,21 @@ class FileRegistrationTab(QWidget):
         qimage_high_res = QImage(fitz_pixmap_high_res.samples, fitz_pixmap_high_res.width, fitz_pixmap_high_res.height, fitz_pixmap_high_res.stride, QImage.Format.Format_RGB888)
         pil_image_high_res = ImageQt.fromqimage(qimage_high_res)
 
+        # --- FIX: Translate selection coordinates to be relative to the pixmap ---
+        pixmap_on_label = self.pdf_preview_label.pixmap()
+        if pixmap_on_label.isNull():
+            return
+
+        pixmap_rect = pixmap_on_label.rect()
+        label_rect = self.pdf_preview_label.rect()
+        offset_x = (label_rect.width() - pixmap_rect.width()) / 2
+        offset_y = (label_rect.height() - pixmap_rect.height()) / 2
+        translated_selection_rect = selection_rect.translated(-int(offset_x), -int(offset_y))
+        # --- END FIX ---
+
         # Scale the selection rectangle to the high-resolution image
-        pixmap_width = self.pdf_preview_label.pixmap().width()
-        pixmap_height = self.pdf_preview_label.pixmap().height()
+        pixmap_width = pixmap_on_label.width()
+        pixmap_height = pixmap_on_label.height()
         
         # Ensure pixmap_width and pixmap_height are not zero to avoid division by zero
         if pixmap_width == 0 or pixmap_height == 0:
@@ -326,10 +338,10 @@ class FileRegistrationTab(QWidget):
         x_scale = fitz_pixmap_high_res.width / pixmap_width
         y_scale = fitz_pixmap_high_res.height / pixmap_height
 
-        x = int(selection_rect.x() * x_scale)
-        y = int(selection_rect.y() * y_scale)
-        w = int(selection_rect.width() * x_scale)
-        h = int(selection_rect.height() * y_scale)
+        x = int(translated_selection_rect.x() * x_scale)
+        y = int(translated_selection_rect.y() * y_scale)
+        w = int(translated_selection_rect.width() * x_scale)
+        h = int(translated_selection_rect.height() * y_scale)
 
         # Validate cropped region dimensions
         if w <= 0 or h <= 0:
@@ -349,7 +361,7 @@ class FileRegistrationTab(QWidget):
         cropped_image = pil_image_high_res.crop((x, y, x + w, y + h))
 
         # Perform OCR on the cropped image
-        ocr_processor = OcrProcessor(cropped_image)
+        ocr_processor = OcrProcessor(cropped_image, self.config_manager)
         ocr_results = ocr_processor.get_text_and_boxes()
         if ocr_results:
             text = "".join([result['text'] for result in ocr_results]) # Remove spaces
@@ -360,6 +372,10 @@ class FileRegistrationTab(QWidget):
         if self.active_field is self.issue_date_edit:
             converted_date = self.date_converter.to_seireki(text)
             self.active_field.setText(converted_date)
+        elif self.active_field is self.amount_edit:
+            # Use the validator's internal normalization method
+            normalized_amount = self.validator._normalize_amount_string(text)
+            self.active_field.setText(normalized_amount)
         else:
             self.active_field.setText(text)
         self.update_filename_preview() # Explicitly update filename preview after setting text

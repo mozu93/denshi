@@ -1,14 +1,16 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QLabel, QHBoxLayout, QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QTabWidget, QWidget
 
 class SettingsDialog(QDialog):
-    def __init__(self, config_manager, metadata_manager, parent=None): # Added metadata_manager
+    def __init__(self, config_manager, metadata_manager, parent=None):
         super().__init__(parent)
         self.config_manager = config_manager
-        self.metadata_manager = metadata_manager # Store metadata_manager
+        self.metadata_manager = metadata_manager
         self.setWindowTitle("設定")
         self.layout = QVBoxLayout(self)
 
         # Root Save Directory
+        root_dir_group = QGroupBox("保存先設定")
+        root_dir_group_layout = QVBoxLayout()
         self.root_dir_layout = QHBoxLayout()
         self.root_dir_label = QLabel("ルート保存ディレクトリ:")
         self.root_dir_edit = QLineEdit()
@@ -17,12 +19,27 @@ class SettingsDialog(QDialog):
         self.root_dir_layout.addWidget(self.root_dir_label)
         self.root_dir_layout.addWidget(self.root_dir_edit)
         self.root_dir_layout.addWidget(self.root_dir_button)
-        self.layout.addLayout(self.root_dir_layout)
+        root_dir_group_layout.addLayout(self.root_dir_layout)
+        root_dir_group.setLayout(root_dir_group_layout)
+        self.layout.addWidget(root_dir_group)
+
+        # Tesseract Path
+        tesseract_group = QGroupBox("OCR設定")
+        tesseract_group_layout = QVBoxLayout()
+        tesseract_layout = QHBoxLayout()
+        tesseract_layout.addWidget(QLabel("Tesseract OCR のパス:"))
+        self.tesseract_path_edit = QLineEdit(self)
+        tesseract_layout.addWidget(self.tesseract_path_edit)
+        browse_button = QPushButton('参照...', self)
+        browse_button.clicked.connect(self.browse_tesseract_path)
+        tesseract_layout.addWidget(browse_button)
+        tesseract_group_layout.addLayout(tesseract_layout)
+        tesseract_group.setLayout(tesseract_group_layout)
+        self.layout.addWidget(tesseract_group)
 
         # Document Types Management
         doc_type_group = QGroupBox("書類種別管理")
         doc_type_layout = QVBoxLayout()
-
         self.doc_type_tabs = QTabWidget()
 
         # Expenditure Tab
@@ -47,7 +64,6 @@ class SettingsDialog(QDialog):
 
         doc_type_layout.addWidget(self.doc_type_tabs)
 
-        # Add new document type input
         add_doc_type_layout = QHBoxLayout()
         self.new_doc_type_key_edit = QLineEdit()
         self.new_doc_type_key_edit.setPlaceholderText("例: invoice")
@@ -62,7 +78,6 @@ class SettingsDialog(QDialog):
         add_doc_type_layout.addWidget(self.add_doc_type_button)
         doc_type_layout.addLayout(add_doc_type_layout)
 
-        # Delete document type button
         self.delete_doc_type_button = QPushButton("選択を削除")
         self.delete_doc_type_button.clicked.connect(self.delete_selected_doc_type)
         doc_type_layout.addWidget(self.delete_doc_type_button)
@@ -86,7 +101,9 @@ class SettingsDialog(QDialog):
         root_dir = self.config_manager.get('Paths', 'root_save_directory')
         self.root_dir_edit.setText(root_dir)
 
-        # Load expenditure document types
+        tesseract_path = self.config_manager.get_tesseract_path()
+        self.tesseract_path_edit.setText(tesseract_path)
+
         self.expenditure_doc_type_table.setRowCount(0)
         expenditure_folder_names = self.config_manager.get_section('FolderNames_Expenditure')
         if expenditure_folder_names:
@@ -96,7 +113,6 @@ class SettingsDialog(QDialog):
                 self.expenditure_doc_type_table.setItem(row_position, 0, QTableWidgetItem(key))
                 self.expenditure_doc_type_table.setItem(row_position, 1, QTableWidgetItem(value))
 
-        # Load income document types
         self.income_doc_type_table.setRowCount(0)
         income_folder_names = self.config_manager.get_section('FolderNames_Income')
         if income_folder_names:
@@ -111,11 +127,18 @@ class SettingsDialog(QDialog):
         if directory:
             self.root_dir_edit.setText(directory)
 
+    def browse_tesseract_path(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, 'Tesseract OCR を選択', '', '実行ファイル (*.exe)')
+        if file_path:
+            self.tesseract_path_edit.setText(file_path)
+
     def save_settings(self):
         root_dir = self.root_dir_edit.text()
         self.config_manager.set('Paths', 'root_save_directory', root_dir)
 
-        # Save expenditure document types
+        tesseract_path = self.tesseract_path_edit.text()
+        self.config_manager.set_tesseract_path(tesseract_path)
+
         expenditure_doc_types_to_save = {}
         for row in range(self.expenditure_doc_type_table.rowCount()):
             key_item = self.expenditure_doc_type_table.item(row, 0)
@@ -124,7 +147,6 @@ class SettingsDialog(QDialog):
                 expenditure_doc_types_to_save[key_item.text()] = value_item.text()
         self.config_manager.set_section('FolderNames_Expenditure', expenditure_doc_types_to_save)
 
-        # Save income document types
         income_doc_types_to_save = {}
         for row in range(self.income_doc_type_table.rowCount()):
             key_item = self.income_doc_type_table.item(row, 0)
@@ -143,13 +165,8 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "入力エラー", "キーと表示名の両方を入力してください。")
             return
 
-        current_table = None
-        if self.doc_type_tabs.currentIndex() == 0: # Expenditure tab
-            current_table = self.expenditure_doc_type_table
-        else: # Income tab
-            current_table = self.income_doc_type_table
+        current_table = self.expenditure_doc_type_table if self.doc_type_tabs.currentIndex() == 0 else self.income_doc_type_table
 
-        # Check for duplicate key in current table
         for row in range(current_table.rowCount()):
             if current_table.item(row, 0).text() == key:
                 QMessageBox.warning(self, "重複エラー", "このキーは既に存在します。")
@@ -164,37 +181,26 @@ class SettingsDialog(QDialog):
         self.new_doc_type_value_edit.clear()
 
     def delete_selected_doc_type(self):
-        current_table = None
-        transaction_type_name = "" # To pass to metadata_manager
-        if self.doc_type_tabs.currentIndex() == 0: # Expenditure tab
+        if self.doc_type_tabs.currentIndex() == 0:
             current_table = self.expenditure_doc_type_table
-            transaction_type_name = "支出情報" # Assuming this is the folder name
-        else: # Income tab
+            transaction_type_name = "支出情報"
+        else:
             current_table = self.income_doc_type_table
-            transaction_type_name = "収入情報" # Assuming this is the folder name
+            transaction_type_name = "収入情報"
 
         selected_rows = current_table.selectionModel().selectedRows()
         if not selected_rows:
             QMessageBox.information(self, "選択なし", "削除する行を選択してください。")
             return
 
-        # Get the document type value to check for files
-        # Assuming only one row can be selected for simplicity, or iterate through all selected
-        # For now, let's assume only one row can be selected for deletion.
-        # If multiple rows are selected, we'll check the first one.
         selected_row_index = selected_rows[0].row()
-        doc_type_value = current_table.item(selected_row_index, 1).text() # Get the display name (e.g., "03.請求書")
+        doc_type_value = current_table.item(selected_row_index, 1).text()
 
-        # Check if there are files in the folder for this document type
-        # Need to get the root_save_directory from config_manager
-        # The metadata_manager already has root_path initialized from config_manager
         if self.metadata_manager.has_files_for_doc_type(transaction_type_name, doc_type_value):
             QMessageBox.warning(self, "削除不可", "この書類種別に関連するファイルがフォルダ内に存在するため、削除できません。")
             return
 
-        reply = QMessageBox.question(self, "確認", "選択した書類種別を削除しますか？",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(self, "確認", "選択した書類種別を削除しますか？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            # Delete rows from bottom to top to avoid index issues
             for index in sorted(selected_rows, reverse=True):
                 current_table.removeRow(index.row())

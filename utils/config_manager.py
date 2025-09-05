@@ -20,13 +20,13 @@ class ConfigManager:
         self.config.add_section(section)
         for key, value in data.items():
             self.config.set(section, key, str(value))
-        self._save_config()
+        self.save()
 
     def set(self, section, key, value):
         if not self.config.has_section(section):
             self.config.add_section(section)
         self.config.set(section, key, str(value))
-        self._save_config()
+        self.save()
 
     def save(self):
         with open(self.config_path, 'w', encoding='utf-8') as configfile:
@@ -38,3 +38,9 @@ class ConfigManager:
     def set_last_input(self, key, value):
         self.set('LastInputs', key, value)
         self.save()
+
+    def get_tesseract_path(self):
+        return self.get('Tesseract', 'Path', fallback='')
+
+    def set_tesseract_path(self, path):
+        self.set('Tesseract', 'Path', path)
