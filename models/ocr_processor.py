@@ -2,6 +2,24 @@ import pytesseract
 import os
 
 class OcrProcessor:
+    @staticmethod
+    def warm_up(config_manager):
+        """
+        Performs a lightweight operation to warm up Tesseract OCR.
+        """
+        try:
+            tesseract_path = config_manager.get_tesseract_path()
+            if tesseract_path and os.path.exists(tesseract_path):
+                pytesseract.pytesseract.tesseract_cmd = tesseract_path
+            pytesseract.get_tesseract_version() # This forces Tesseract to load
+        except pytesseract.TesseractNotFoundError:
+            # This error will be handled properly when OCR is actually used.
+            # For warm-up, we can ignore it.
+            pass
+        except Exception:
+            # Ignore other exceptions during warm-up as well.
+            pass
+
     def __init__(self, image, config_manager):
         self.image = image
         self.config_manager = config_manager

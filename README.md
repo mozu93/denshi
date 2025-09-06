@@ -20,6 +20,8 @@
 - **起動ガイド**: アプリケーション起動時に利用方法のヒントを表示（「今後表示しない」オプション付き）
 - **書類種別管理**: 設定ダイアログ内で支出・収入別に書類種別を追加・編集・削除（関連ファイルが存在する場合は削除制限あり）
 - **検索機能強化**: 年度をプルダウンから選択可能にし、検索フィールドでのEnterキー押下で検索実行
+- **堅牢性の向上**: 包括的なエラーハンドリングと入力値検証により、予期せぬクラッシュを防止し、安定した操作を実現
+- **パフォーマンス改善**: アプリケーション起動時にOCRエンジンを事前読み込みし、初回認識時の待機時間を短縮
 
 ## 動作環境
 
@@ -76,7 +78,7 @@ python main.py
 PyInstallerを使用して、アプリケーションを単一の実行可能ファイルにパッケージ化できます。
 
 ```bash
-pyinstaller --noconsole --onefile --add-data "config.ini;." --add-data "電子帳簿保存;電子帳簿保存" main.py
+pyinstaller --noconsole --onefile --add-data "config.ini;. " --add-data "電子帳簿保存;電子帳簿保存" main.py
 ```
 生成された `main.exe` は `dist` フォルダ内にあります。
 
@@ -146,7 +148,7 @@ pyinstaller --noconsole --onefile --add-data "config.ini;." --add-data "電子�
 root_save_directory = 電子帳簿保存
 
 [Tesseract]
-path = C:\Program Files\Tesseract-OCR\tesseract.exe
+path = C:\ Program Files\Tesseract-OCR\tesseract.exe
 
 [FolderNames_Expenditure]
 order = 01.注文書・契約書
@@ -255,12 +257,12 @@ PyInstaller    # 実行ファイル作成
 - ✅ 起動ガイド（「今後表示しない」オプション付き）
 - ✅ 書類種別管理（設定ダイアログ内で支出・収入別に管理、削除制限付き）
 - ✅ 検索機能（年度プルダウン、Enterキー検索）
+- ✅ エラーハンドリングの強化
 - ✅ 実行可能ファイル作成（PyInstaller）
 
 ### 開発予定機能
 - 🚧 データ編集・削除機能の強化（検索結果からの直接編集・削除は実装済み）
 - 🚧 インデックス再構築機能の詳細実装
-- 🚧 エラーハンドリングの強化
 
 ## トラブルシューティング
 

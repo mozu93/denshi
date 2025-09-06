@@ -4,6 +4,7 @@ from views.file_registration_tab import FileRegistrationTab
 from views.file_search_tab import FileSearchTab
 from utils.config_manager import ConfigManager
 from models.metadata_manager import MetadataManager
+from models.ocr_processor import OcrProcessor
 from PyQt6.QtCore import QTimer
 from views.settings_dialog import SettingsDialog
 from views.help_dialog import show_help_dialog
@@ -44,7 +45,8 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("準備完了")
-        show_startup_guide(self.config_manager, self)
+        QTimer.singleShot(0, lambda: show_startup_guide(self.config_manager, self))
+        QTimer.singleShot(100, lambda: OcrProcessor.warm_up(self.config_manager))
 
     def _create_actions(self):
         self.open_action = QAction(QIcon.fromTheme("document-open"), "PDFを開く", self)
