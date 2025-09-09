@@ -41,6 +41,7 @@ pip install -r requirements.txt
 #### Windows
 1.  **インストーラーのダウンロード:**
     [Tesseract OCRの公式ダウンロードページ](https://tesseract-ocr.github.io/tessdoc/Downloads.html) から、Windows向けの64-bitインストーラー（例: `tesseract-ocr-w64-setup-vX.XX.XX.exe`）をダウンロードします。
+　　こちらも　https://github.com/UB-Mannheim/tesseract/wiki
 2.  **インストール:**
     インストーラーを実行し、指示に従ってインストールを進めます。
     *   言語選択では「English」を選択します。
