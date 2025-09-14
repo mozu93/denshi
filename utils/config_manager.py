@@ -66,3 +66,38 @@ class ConfigManager:
 
     def set_tesseract_path(self, path):
         self.set('Tesseract', 'Path', path)
+
+    # UI設定関連
+    def get_ui_font_size(self, fallback=10):
+        try:
+            return int(self.get('UI', 'font_size', fallback=str(fallback)))
+        except (ValueError, TypeError):
+            return fallback
+
+    def set_ui_font_size(self, size):
+        self.set('UI', 'font_size', str(size))
+
+    def get_window_size(self):
+        width = self.get('UI', 'window_width', fallback='1200')
+        height = self.get('UI', 'window_height', fallback='800')
+        try:
+            return int(width), int(height)
+        except (ValueError, TypeError):
+            return 1200, 800
+
+    def set_window_size(self, width, height):
+        self.set('UI', 'window_width', str(width))
+        self.set('UI', 'window_height', str(height))
+
+    def get_splitter_sizes(self, splitter_name):
+        sizes_str = self.get('UI', f'{splitter_name}_sizes', fallback='')
+        if sizes_str:
+            try:
+                return [int(s) for s in sizes_str.split(',')]
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def set_splitter_sizes(self, splitter_name, sizes):
+        sizes_str = ','.join(str(s) for s in sizes)
+        self.set('UI', f'{splitter_name}_sizes', sizes_str)

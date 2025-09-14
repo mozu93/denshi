@@ -97,7 +97,16 @@ class MetadataManager:
             max_id = 0
             # ディレクトリが読み取れない場合、OSErrorが発生する可能性がある
             for filename in os.listdir(target_dir):
-                match = re.match(r'(\d+)_.*\.pdf
+                match = re.match(r'(\d+)_.*\.pdf$', filename)
+                if match:
+                    file_id = int(match.group(1))
+                    max_id = max(max_id, file_id)
+
+            return f"{max_id + 1:03d}"
+
+        except OSError as e:
+            logging.error(f"ディレクトリの読み取りに失敗しました: {target_dir}, エラー: {e}")
+            return "001"
 
     def rebuild_index(self):
         """Scans all managed directories, parses filenames, and overwrites the index.csv for each year."""
@@ -271,17 +280,7 @@ class MetadataManager:
         df.loc[index, 'updated_at'] = datetime.now().isoformat()
 
         self.save_df(year_nendo, df)
-        return True, filename, re.IGNORECASE)
-                if match:
-                    doc_id = int(match.group(1))
-                    if doc_id > max_id:
-                        max_id = doc_id
-            
-            return f"{max_id + 1:03d}"
-        except (OSError, ValueError) as e:
-            logging.error(f"次のドキュメントIDの計算中にエラーが発生しました: {e}")
-            # エラー発生時はデフォルトのIDを返すことで、処理の停止を避ける
-            return "001"
+        return True
 
     def rebuild_index(self):
         """Scans all managed directories, parses filenames, and overwrites the index.csv for each year."""

@@ -5,8 +5,9 @@ import subprocess
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QGridLayout, QLabel,
-    QComboBox, QDateEdit, QMessageBox
+    QComboBox, QDateEdit, QMessageBox, QSplitter
 )
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import QDate
 from functools import partial
@@ -23,15 +24,27 @@ class FileSearchTab(QWidget):
         self.validator = Validator()
         
         main_layout = QVBoxLayout(self)
-        
+
+        # スプリッターで検索条件と結果を分割
+        search_splitter = QSplitter(Qt.Orientation.Vertical)
+
         # Search Conditions
         search_group = self._create_search_group()
-        main_layout.addWidget(search_group)
-        
+        search_splitter.addWidget(search_group)
+
         # Search Results
         results_group = self._create_results_group()
-        main_layout.addWidget(results_group)
-        
+        search_splitter.addWidget(results_group)
+
+        # スプリッターサイズの復元
+        saved_sizes = self.config_manager.get_splitter_sizes('search_splitter')
+        if saved_sizes and len(saved_sizes) == 2:
+            search_splitter.setSizes(saved_sizes)
+        else:
+            search_splitter.setSizes([200, 400])  # 検索条件:200, 結果:400
+
+        self.search_splitter = search_splitter
+        main_layout.addWidget(search_splitter)
         self.setLayout(main_layout)
         self._populate_year_combo()
         self._populate_doc_type_combo()
@@ -110,9 +123,11 @@ class FileSearchTab(QWidget):
         layout = QVBoxLayout()
 
         self.results_table = QTableWidget()
+        # テーブルの最小高さを設定（約５行分）
+        self.results_table.setMinimumHeight(150)
         self.results_table.setColumnCount(8)
         self.results_table.setHorizontalHeaderLabels([
-            "ID", "発行日", "金額(税込)", "取引先名", 
+            "ID", "発行日", "金額(税込)", "取引先名",
             "書類種別", "メモ", "", ""
         ])
         self.results_table.setColumnHidden(0, True) # Hide ID column
@@ -309,3 +324,9 @@ class FileSearchTab(QWidget):
         """Public method to allow refreshing the data in the combo boxes."""
         self._populate_year_combo()
         self._populate_doc_type_combo()
+
+    def save_splitter_sizes(self):
+        """Save splitter sizes to configuration."""
+        if hasattr(self, 'search_splitter'):
+            sizes = self.search_splitter.sizes()
+            self.config_manager.set_splitter_sizes('search_splitter', sizes)

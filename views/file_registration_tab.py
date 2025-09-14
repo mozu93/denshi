@@ -90,6 +90,8 @@ class FileRegistrationTab(QWidget):
     def _create_widgets(self):
         """Create all the widgets for the tab."""
         self.file_list_widget = QListWidget()
+        # ファイルリストの最小サイズを設定
+        self.file_list_widget.setMinimumHeight(120)  # 約5行分の高さ
         
         # Toolbar widgets
         self.toolbar = QToolBar()
@@ -117,15 +119,17 @@ class FileRegistrationTab(QWidget):
 
     def _setup_layout(self):
         """Set up the layout of the tab."""
-        main_layout = QHBoxLayout(self)
+        main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.setLayout(QHBoxLayout()) # Set a dummy layout to be replaced
+        self.layout().addWidget(main_splitter)
 
         # --- Left Column ---
-        left_column_layout = QVBoxLayout()
+        left_splitter = QSplitter(Qt.Orientation.Vertical)
         file_list_group = QGroupBox("登録ファイル")
         file_list_layout = QVBoxLayout()
         file_list_layout.addWidget(self.file_list_widget)
         file_list_group.setLayout(file_list_layout)
-        left_column_layout.addWidget(file_list_group, 1)
+        left_splitter.addWidget(file_list_group)
 
         data_input_group = QGroupBox("データ入力")
         form_layout = QFormLayout()
@@ -145,10 +149,21 @@ class FileRegistrationTab(QWidget):
         form_layout.addRow("ファイル名:", self.filename_preview_label)
         form_layout.addRow(self.save_button)
         data_input_group.setLayout(form_layout)
-        left_column_layout.addWidget(data_input_group, 2)
+        left_splitter.addWidget(data_input_group)
+
+        # スプリッターサイズの復元
+        saved_left_sizes = self.config_manager.get_splitter_sizes('left_splitter')
+        if saved_left_sizes and len(saved_left_sizes) == 2:
+            left_splitter.setSizes(saved_left_sizes)
+        else:
+            left_splitter.setSizes([150, 400])  # ファイルリストの最小サイズを150に増加
+
+        # スプリッターの参照を保存
+        self.left_splitter = left_splitter
 
         # --- Right Column ---
-        right_column_layout = QVBoxLayout()
+        right_column_widget = QWidget()
+        right_column_layout = QVBoxLayout(right_column_widget)
         self.toolbar.addAction(self.zoom_in_action)
         self.toolbar.addAction(self.zoom_out_action)
         self.toolbar.addAction(self.reset_zoom_action)
@@ -163,10 +178,19 @@ class FileRegistrationTab(QWidget):
         pdf_preview_group.setLayout(pdf_preview_layout)
         right_column_layout.addWidget(pdf_preview_group)
 
-        # Add columns to main layout
-        main_layout.addLayout(left_column_layout, 1)
-        main_layout.addLayout(right_column_layout, 2)
-        self.setLayout(main_layout)
+        # Add columns to main splitter
+        main_splitter.addWidget(left_splitter)
+        main_splitter.addWidget(right_column_widget)
+
+        # メインスプリッターサイズの復元
+        saved_main_sizes = self.config_manager.get_splitter_sizes('main_splitter')
+        if saved_main_sizes and len(saved_main_sizes) == 2:
+            main_splitter.setSizes(saved_main_sizes)
+        else:
+            main_splitter.setSizes([400, 800])  # 左パネルを少し大きく
+
+        # スプリッターの参照を保存
+        self.main_splitter = main_splitter
 
     def _connect_signals(self):
         """Connect all signals to slots."""
@@ -559,3 +583,13 @@ class FileRegistrationTab(QWidget):
                 self.file_list_widget.setCurrentItem(next_item)
                 return
         self.file_list_widget.setCurrentRow(-1)
+
+    def save_splitter_sizes(self):
+        """Save splitter sizes to configuration."""
+        if hasattr(self, 'main_splitter'):
+            sizes = self.main_splitter.sizes()
+            self.config_manager.set_splitter_sizes('main_splitter', sizes)
+
+        if hasattr(self, 'left_splitter'):
+            sizes = self.left_splitter.sizes()
+            self.config_manager.set_splitter_sizes('left_splitter', sizes)
