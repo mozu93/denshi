@@ -5,9 +5,9 @@ from functools import partial
 import re
 
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QListWidget, QLabel, QLineEdit, QFormLayout, 
+    QWidget, QHBoxLayout, QListWidget, QLabel, QLineEdit, QFormLayout,
     QPushButton, QVBoxLayout, QGroupBox, QRadioButton, QComboBox, QTextEdit,
-    QSplitter, QMessageBox, QFileDialog, QScrollArea, QToolBar
+    QSplitter, QMessageBox, QFileDialog, QScrollArea, QToolBar, QApplication
 )
 from PyQt6.QtGui import QPixmap, QImage, QColor, QPainter, QPen, QAction, QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QBuffer, QIODevice, QPoint, QRect, QSize
@@ -86,6 +86,37 @@ class FileRegistrationTab(QWidget):
         self._setup_layout()
         self._connect_signals()
         self._load_initial_state()
+
+    def _play_warning_sound(self):
+        """システム警告音を再生"""
+        try:
+            # Windowsのシステム警告音を再生
+            QApplication.beep()
+            # 追加でプラットフォーム固有の音も試行
+            import platform
+            if platform.system() == 'Windows':
+                try:
+                    import winsound
+                    winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+                except ImportError:
+                    pass
+        except Exception as e:
+            print(f"DEBUG: 警告音再生エラー: {e}")
+
+    def _play_error_sound(self):
+        """システムエラー音を再生"""
+        try:
+            # Windowsのシステムエラー音を再生
+            QApplication.beep()
+            import platform
+            if platform.system() == 'Windows':
+                try:
+                    import winsound
+                    winsound.MessageBeep(winsound.MB_ICONERROR)
+                except ImportError:
+                    pass
+        except Exception as e:
+            print(f"DEBUG: エラー音再生エラー: {e}")
 
     def _create_widgets(self):
         """Create all the widgets for the tab."""
@@ -194,7 +225,7 @@ class FileRegistrationTab(QWidget):
 
     def _connect_signals(self):
         """Connect all signals to slots."""
-        self.file_list_widget.currentItemChanged.connect(self.display_pdf_preview)
+        self.file_list_widget.currentItemChanged.connect(self.on_file_selection_changed)
         self.pdf_preview_label.selection_changed.connect(self.on_region_selected)
         self.save_button.clicked.connect(self.save_and_next)
 
@@ -265,6 +296,7 @@ class FileRegistrationTab(QWidget):
         # Prevent duplicate file registration
         for i in range(self.file_list_widget.count()):
             if self.file_list_widget.item(i).text() == file_path:
+                self._play_warning_sound()
                 QMessageBox.warning(self, "警告", "このファイルは既にリストに追加されています。")
                 return
 
@@ -279,6 +311,11 @@ class FileRegistrationTab(QWidget):
         for label in self.overlay_labels:
             label.deleteLater()
         self.overlay_labels.clear()
+
+    def on_file_selection_changed(self, current, previous):
+        """Handle file selection changes - update both PDF preview and document ID."""
+        self.display_pdf_preview(current, previous)
+        self.update_doc_id()
 
     def display_pdf_preview(self, current, previous):
         self.clear_overlays()
@@ -477,6 +514,7 @@ class FileRegistrationTab(QWidget):
     def save_and_next(self):
         current_item = self.file_list_widget.currentItem()
         if not current_item:
+            self._play_warning_sound()
             QMessageBox.warning(self, "注意", "処理対象のファイルが選択されていません。")
             return
         source_path = current_item.text()
@@ -497,6 +535,7 @@ class FileRegistrationTab(QWidget):
         # Validate and get extracted amount
         is_valid_amount, extracted_amount = self.validator.is_valid_amount(amount_raw)
         if not is_valid_amount:
+            self._play_error_sound()
             QMessageBox.warning(self, "入力エラー", "金額には半角数字のみ入力してください。")
             return
 
@@ -508,6 +547,7 @@ class FileRegistrationTab(QWidget):
             year_int = int(year_raw)
             formatted_year = f"{year_int}年度"
         except ValueError:
+            self._play_error_sound()
             QMessageBox.warning(self, "入力エラー", "年度は半角数字で入力してください。")
             return
 
@@ -515,6 +555,71 @@ class FileRegistrationTab(QWidget):
         new_filename = f"{doc_id}_{issue_date}_{extracted_amount}_{sanitized_client_name}.pdf"
         target_dir = os.path.join(root_path, formatted_year, transaction_type, doc_type)
         target_path = os.path.normpath(os.path.join(target_dir, new_filename))
+
+        # 重複ファイルのチェック
+        print(f"DEBUG: 重複チェック対象パス: {target_path}")
+        print(f"DEBUG: ファイル存在チェック結果: {os.path.exists(target_path)}")
+
+        # より包括的な重複チェック
+        duplicate_found = False
+        duplicate_reason = ""
+
+        # 1. 完全一致チェック
+        if os.path.exists(target_path):
+            duplicate_found = True
+            duplicate_reason = f"同じファイル名のファイルが既に存在します:\n{target_path}"
+            print(f"DEBUG: 同一ファイル名で重複検出")
+
+        # 2. 元ファイル名での重複チェック（メタデータベース）
+        if not duplicate_found:
+            try:
+                # 同じ年度のメタデータを検索
+                csv_path = self.metadata_manager._get_csv_path(formatted_year)
+                if os.path.exists(csv_path):
+                    import pandas as pd
+                    df = pd.read_csv(csv_path, encoding='utf-8-sig')
+
+                    # 元のファイル名をチェック（拡張子なし）
+                    original_filename_base = os.path.splitext(os.path.basename(source_path))[0]
+
+                    # 既存エントリで同じ元ファイル名があるかチェック
+                    existing_files = df['file_path'].apply(
+                        lambda x: os.path.splitext(os.path.basename(x))[0] if pd.notna(x) else ""
+                    )
+
+                    for idx, existing_file in existing_files.items():
+                        if existing_file:
+                            # ファイル名の一部が元ファイル名と一致するかチェック
+                            if original_filename_base in existing_file or existing_file in original_filename_base:
+                                duplicate_found = True
+                                existing_path = df.iloc[idx]['file_path']
+                                duplicate_reason = f"同じ元ファイルが既に登録されている可能性があります:\n\n元ファイル: {os.path.basename(source_path)}\n既存登録: {existing_path}"
+                                print(f"DEBUG: 元ファイル名で重複検出: {original_filename_base} vs {existing_file}")
+                                break
+
+            except Exception as e:
+                print(f"DEBUG: メタデータチェックエラー: {e}")
+
+        if duplicate_found:
+            print(f"DEBUG: 重複ファイルが検出されました")
+            # 警告音を再生
+            self._play_warning_sound()
+
+            duplicate_reply = QMessageBox.question(
+                self,
+                '重複ファイル',
+                f"{duplicate_reason}\n\n重複して登録していないか確認してください。\n\nそれでも登録しますか？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel
+            )
+
+            if duplicate_reply == QMessageBox.StandardButton.Cancel:
+                print("DEBUG: ユーザーがキャンセルを選択しました")
+                return
+            else:
+                print("DEBUG: ユーザーが重複登録を承認しました")
+        else:
+            print("DEBUG: 重複ファイルは検出されませんでした")
 
         message = f"""以下の内容で保存しますか？
 
@@ -537,6 +642,7 @@ class FileRegistrationTab(QWidget):
             try:
                 # Validation
                 if not self.validator.is_valid_date(issue_date):
+                    self._play_error_sound()
                     QMessageBox.warning(self, "入力エラー", "発行日の形式が正しくありません。(YYYYMMDD)")
                     return
 
@@ -567,6 +673,7 @@ class FileRegistrationTab(QWidget):
                 self.config_manager.set_last_input('doc_type_index', str(self.document_type_combo.currentIndex()))
 
             except Exception as e:
+                self._play_error_sound()
                 QMessageBox.critical(self, "エラー", f"ファイルの保存に失敗しました。\n{e}")
 
     def clear_input_fields(self):
