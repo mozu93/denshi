@@ -26,7 +26,7 @@ class OcrProcessor:
 
     def get_text_and_boxes(self, min_confidence=0):
         """
-        Performs OCR on the image and returns a list of recognized words 
+        Performs OCR on the image and returns a list of recognized words
         with their bounding boxes and confidence levels.
         """
         tesseract_path = self.config_manager.get_tesseract_path()
@@ -35,13 +35,13 @@ class OcrProcessor:
         # If not set or path is invalid, it will fall back to searching the system's PATH
 
         try:
-            config = r'--psm 6 --oem 3' 
+            config = r'--psm 6 --oem 3'
             data = pytesseract.image_to_data(self.image, output_type=pytesseract.Output.DICT, lang='jpn', config=config)
             results = []
             for i in range(len(data['text'])):
                 conf = int(data['conf'][i])
                 text = data['text'][i].strip()
-                
+
                 if conf >= min_confidence and text:
                     results.append({
                         'text': text,
