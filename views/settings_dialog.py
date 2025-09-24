@@ -5,6 +5,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config_manager = config_manager
         self.metadata_manager = metadata_manager
+        self.new_root_dir = None
         self.setWindowTitle("設定")
         self.layout = QVBoxLayout(self)
 
@@ -135,6 +136,7 @@ class SettingsDialog(QDialog):
     def save_settings(self):
         root_dir = self.root_dir_edit.text()
         self.config_manager.set('Paths', 'root_save_directory', root_dir)
+        self.new_root_dir = root_dir
 
         tesseract_path = self.tesseract_path_edit.text()
         self.config_manager.set_tesseract_path(tesseract_path)

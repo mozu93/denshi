@@ -1,4 +1,3 @@
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -116,3 +115,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Custom
+電子帳簿保存/

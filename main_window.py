@@ -18,6 +18,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("電子帳簿保存システム")
 
         central_widget = QWidget(self)
+        central_widget.setAutoFillBackground(True)
         self.setCentralWidget(central_widget)
 
         layout = QVBoxLayout(central_widget)
@@ -128,8 +129,9 @@ class MainWindow(QMainWindow):
     def open_settings(self):
         dialog = SettingsDialog(self.config_manager, self.metadata_manager, self)
         if dialog.exec():
-            new_root_directory = self.config_manager.get('Paths', 'root_save_directory', fallback='')
-            self.metadata_manager.update_root_directory(new_root_directory)
+            new_root_directory = dialog.new_root_dir
+            if new_root_directory is not None:
+                self.metadata_manager.update_root_directory(new_root_directory)
             QMessageBox.information(self, "設定", "設定を保存しました。")
 
     def _show_help_dialog(self):

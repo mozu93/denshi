@@ -22,4 +22,3 @@ def show_help_dialog(parent=None):
         "ファイルシステムとメタデータの整合性を再構築します。"
     )
     QMessageBox.information(parent, "電子帳簿保存システム ヘルプ", help_message)
-

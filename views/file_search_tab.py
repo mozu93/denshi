@@ -5,7 +5,7 @@ import subprocess
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QGridLayout, QLabel,
-    QComboBox, QDateEdit, QMessageBox, QSplitter
+    QComboBox, QDateEdit, QMessageBox, QSplitter, QHBoxLayout
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
@@ -56,6 +56,12 @@ class FileSearchTab(QWidget):
 
         # Search fields
         self.year_combo = QComboBox()
+        self.reload_year_button = QPushButton(QIcon.fromTheme("view-refresh"), "再読込")
+        self.reload_year_button.clicked.connect(self._populate_year_combo)
+        year_layout = QHBoxLayout()
+        year_layout.addWidget(self.year_combo, 1)
+        year_layout.addWidget(self.reload_year_button)
+
         self.doc_type_combo = QComboBox()
         self.client_name_edit = QLineEdit()
         self.date_from_edit = QDateEdit(calendarPopup=True)
@@ -74,7 +80,7 @@ class FileSearchTab(QWidget):
 
         # Layout setup
         form_layout = QFormLayout()
-        form_layout.addRow("年度:", self.year_combo)
+        form_layout.addRow("年:", year_layout)
         form_layout.addRow("書類種別:", self.doc_type_combo)
         form_layout.addRow("取引先名:", self.client_name_edit)
         form_layout.addRow("発行日 (From):", self.date_from_edit)
@@ -104,7 +110,7 @@ class FileSearchTab(QWidget):
             self.year_combo.addItems(available_years)
             self.year_combo.setCurrentIndex(0)
         else:
-            self.year_combo.addItem("年度なし")
+            self.year_combo.addItem("年なし")
 
     def _populate_doc_type_combo(self):
         self.doc_type_combo.clear()
@@ -125,9 +131,9 @@ class FileSearchTab(QWidget):
         self.results_table = QTableWidget()
         # テーブルの最小高さを設定（約５行分）
         self.results_table.setMinimumHeight(150)
-        self.results_table.setColumnCount(8)
+        self.results_table.setColumnCount(9)
         self.results_table.setHorizontalHeaderLabels([
-            "ID", "発行日", "金額(税込)", "取引先名",
+            "ID", "通し番号", "発行日", "金額(税込)", "取引先名",
             "書類種別", "メモ", "", ""
         ])
         self.results_table.setColumnHidden(0, True) # Hide ID column
@@ -148,8 +154,8 @@ class FileSearchTab(QWidget):
 
     def _search_files(self):
         year_nendo = self.year_combo.currentText()
-        if year_nendo == "年度なし" or not year_nendo: # Handle case where no years are found
-            QMessageBox.warning(self, "入力エラー", "検索する年度を選択してください。")
+        if year_nendo == "年なし" or not year_nendo: # Handle case where no years are found
+            QMessageBox.warning(self, "入力エラー", "検索する年を選択してください。")
             return
         # No need for isdigit() check as it comes from valid folder names
         
@@ -182,21 +188,22 @@ class FileSearchTab(QWidget):
 
             # Populate cells
             self.results_table.setItem(row_position, 0, QTableWidgetItem(str(row.get('id', ''))))
-            self.results_table.setItem(row_position, 1, QTableWidgetItem(str(row.get('issue_date', ''))))
-            self.results_table.setItem(row_position, 2, QTableWidgetItem(str(row.get('amount', ''))))
-            self.results_table.setItem(row_position, 3, QTableWidgetItem(str(row.get('client_name', ''))))
-            self.results_table.setItem(row_position, 4, QTableWidgetItem(str(row.get('doc_type', ''))))
-            self.results_table.setItem(row_position, 5, QTableWidgetItem(str(row.get('memo', ''))))
+            self.results_table.setItem(row_position, 1, QTableWidgetItem(str(row.get('doc_id', ''))))
+            self.results_table.setItem(row_position, 2, QTableWidgetItem(str(row.get('issue_date', ''))))
+            self.results_table.setItem(row_position, 3, QTableWidgetItem(str(row.get('amount', ''))))
+            self.results_table.setItem(row_position, 4, QTableWidgetItem(str(row.get('client_name', ''))))
+            self.results_table.setItem(row_position, 5, QTableWidgetItem(str(row.get('doc_type', ''))))
+            self.results_table.setItem(row_position, 6, QTableWidgetItem(str(row.get('memo', ''))))
 
             # Add buttons
             record_id = row.get('id')
             edit_btn = QPushButton(QIcon.fromTheme("document-edit"), "編集")
             edit_btn.clicked.connect(partial(self._edit_row, record_id))
-            self.results_table.setCellWidget(row_position, 6, edit_btn)
+            self.results_table.setCellWidget(row_position, 7, edit_btn)
 
             delete_btn = QPushButton(QIcon.fromTheme("edit-delete"), "削除")
             delete_btn.clicked.connect(partial(self._delete_row, record_id))
-            self.results_table.setCellWidget(row_position, 7, delete_btn)
+            self.results_table.setCellWidget(row_position, 8, delete_btn)
 
     def _open_pdf(self, row, column):
         record_id_item = self.results_table.item(row, 0)
@@ -238,8 +245,8 @@ class FileSearchTab(QWidget):
             return
 
         year_nendo = self.year_combo.currentText()
-        if not year_nendo or year_nendo == "年度なし":
-            QMessageBox.warning(self, "エラー", "編集操作を行う前に、有効な年度を検索してください。")
+        if not year_nendo or year_nendo == "年なし":
+            QMessageBox.warning(self, "エラー", "編集操作を行う前に、有効な年を検索してください。")
             return
 
         # Get current data
@@ -280,8 +287,8 @@ class FileSearchTab(QWidget):
             return
 
         year_nendo = self.year_combo.currentText()
-        if not year_nendo or year_nendo == "年度なし":
-            QMessageBox.warning(self, "エラー", "削除操作を行う前に、有効な年度を検索してください。")
+        if not year_nendo or year_nendo == "年なし":
+            QMessageBox.warning(self, "エラー", "削除操作を行う前に、有効な年を検索してください。")
             return
 
         reply = QMessageBox.question(self, '削除確認',
