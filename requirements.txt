@@ -1,0 +1,6 @@
+PyQt6
+PyMuPDF
+pytesseract
+jaconv
+pandas
+send2trash
