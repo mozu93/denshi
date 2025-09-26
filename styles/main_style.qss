@@ -1,0 +1,72 @@
+/* main_style.qss */
+
+QWidget {
+    background-color: #ececec; /* 全体の背景色を少し明るく */
+    color: #333333;
+}
+
+/* タブウィジェット全体 */
+QTabWidget::pane {
+    border-top: 2px solid #c2c7cb;
+}
+
+/* タブバーのエリア */
+QTabBar {
+    background-color: #ececec;
+}
+
+/* 個々のタブ */
+QTabBar::tab {
+    background: #e0e0e0; /* 非選択タブの背景 */
+    color: #777;
+    border: 1px solid #c2c7cb;
+    border-bottom: none; /* 下線はpaneのborderを使う */
+    padding: 8px 20px;
+    margin-right: 2px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+}
+
+/* 選択されているタブ */
+QTabBar::tab:selected {
+    background: #ffffff; /* 選択タブの背景を白に */
+    color: #333;
+    margin-bottom: -1px; /* 少し下にずらして、下のpaneと繋がって見えるように */
+}
+
+/* マウスが乗っているタブ（非選択時） */
+QTabBar::tab:!selected:hover {
+    background: #d0d0d0;
+}
+
+/* ラベルの背景は透明に */
+QLabel {
+    background-color: transparent;
+}
+
+QListWidget {
+    background-color: #e6f2ff; /* 薄い水色 */
+    border: 1px solid #c2c7cb;
+    border-radius: 3px;
+}
+
+/* 入力ウィジェット共通 */
+QLineEdit, QTextEdit, QComboBox, QDateEdit {
+    background-color: #ffffff;
+    border: 1px solid #c2c7cb;
+    border-radius: 3px;
+    padding: 4px;
+}
+
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QDateEdit:focus {
+    border: 1px solid #0078d7; /* フォーカス時に枠線を青く */
+}
+
+/* QComboBoxのドロップダウン矢印 */
+QComboBox::drop-down {
+    border: none;
+}
+
+QComboBox::down-arrow {
+    image: url(./styles/down_arrow.png); /* （後でアイコンを追加） */
+}

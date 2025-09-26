@@ -1,0 +1,263 @@
+2025-09-04T15:26:14.357476 - Input to to_seireki: 2025年7月15
+2025-09-04T15:26:14.359483 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:26:14.359483 - No conversion applied, returning original: 2025年7月15
+2025-09-04T15:27:30.719478 - Input to to_seireki: 2025年7月15
+2025-09-04T15:27:30.719478 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:27:30.719478 - No conversion applied, returning original: 2025年7月15
+2025-09-04T15:27:31.057958 - Input to to_seireki: 
+2025-09-04T15:27:31.057958 - After cleaning and z2h: 
+2025-09-04T15:27:31.058963 - No conversion applied, returning original: 
+2025-09-04T15:27:34.365030 - Input to to_seireki: 2025年7月15
+2025-09-04T15:27:34.365030 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:27:34.365030 - No conversion applied, returning original: 2025年7月15
+2025-09-04T15:28:58.643161 - Input to to_seireki: 2025年7月15
+2025-09-04T15:28:58.643161 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:28:58.643161 - No conversion applied, returning original: 2025年7月15
+2025-09-04T15:30:00.873205 - Input to to_seireki: 2025年7月15
+2025-09-04T15:30:00.873205 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:30:00.873205 - No conversion applied, returning original: 2025年7月15
+2025-09-04T15:31:14.411570 - Input to to_seireki: :2025年7月15
+2025-09-04T15:31:14.411570 - After cleaning (no z2h): :2025年7月15
+2025-09-04T15:31:14.411570 - No conversion applied, returning original: :2025年7月15
+2025-09-04T15:32:45.398471 - Input to to_seireki: :2025年7月15
+2025-09-04T15:32:45.398471 - After cleaning (no z2h): :2025年7月15
+2025-09-04T15:32:45.400477 - After cleaning and z2h: :2025年7月15
+2025-09-04T15:32:45.400477 - No conversion applied, returning original: :2025年7月15
+2025-09-04T15:32:47.122614 - Input to to_seireki: 
+2025-09-04T15:32:47.122614 - After cleaning (no z2h): 
+2025-09-04T15:32:47.122614 - After cleaning and z2h: 
+2025-09-04T15:32:47.124121 - No conversion applied, returning original: 
+2025-09-04T15:32:51.488209 - Input to to_seireki: 2025年7月15口
+2025-09-04T15:32:51.489958 - After cleaning (no z2h): 2025年7月15口
+2025-09-04T15:32:51.489958 - After cleaning and z2h: 2025年7月15口
+2025-09-04T15:32:51.489958 - No conversion applied, returning original: 2025年7月15口
+2025-09-04T15:32:54.909372 - Input to to_seireki: 
+2025-09-04T15:32:54.911379 - After cleaning (no z2h): 
+2025-09-04T15:32:54.911379 - After cleaning and z2h: 
+2025-09-04T15:32:54.911379 - No conversion applied, returning original: 
+2025-09-04T15:32:57.448016 - Input to to_seireki: 2025年7月15
+2025-09-04T15:32:57.448016 - After cleaning (no z2h): 2025年7月15
+2025-09-04T15:32:57.448016 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:32:57.450023 - No conversion applied, returning original: 2025年7月15
+2025-09-04T15:34:26.291128 - Input to to_seireki: 2025年7月15
+2025-09-04T15:34:26.291128 - After cleaning (no z2h): 2025年7月15
+2025-09-04T15:34:26.293134 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:34:26.293134 - No conversion applied, returning original: 2025年7月15
+2025-09-04T15:35:36.389072 - Input to to_seireki: 2025年7月15
+2025-09-04T15:35:36.391078 - After cleaning (no z2h): 2025年7月15
+2025-09-04T15:35:36.391078 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:35:36.391078 - Converted from Western calendar: 20250715
+2025-09-04T15:39:24.096212 - Input to to_seireki: 2025年7月15
+2025-09-04T15:39:24.096212 - After cleaning and z2h: 2025年7月15
+2025-09-04T15:39:24.098219 - Converted from Western calendar: 20250715
+2025-09-04T15:59:00.167706 - Amount input: \495,000
+2025-09-04T15:59:00.167706 - Amount after z2h: \495,000
+2025-09-04T15:59:00.167706 - Amount after removing symbols: \495,000
+2025-09-04T15:59:00.169734 - Regex did not match for amount: \495,000
+2025-09-04T16:00:13.630188 - Amount input: \495,000
+2025-09-04T16:00:13.630188 - Amount after z2h: \495,000
+2025-09-04T16:00:13.632192 - Amount after removing symbols: 495,000
+2025-09-04T16:04:37.263586 - Amount input: \495,000
+2025-09-04T16:04:37.265591 - Amount after z2h: \495,000
+2025-09-04T16:04:37.265591 - Amount after removing symbols: 495000
+2025-09-04T16:07:09.376596 - Amount input: 
+2025-09-04T16:07:09.376596 - Amount after z2h: 
+2025-09-04T16:07:09.376596 - Amount after removing symbols: 
+2025-09-04T16:07:09.378603 - Regex did not match for amount: 
+2025-09-04T16:07:11.226366 - Amount input: 
+2025-09-04T16:07:11.226366 - Amount after z2h: 
+2025-09-04T16:07:11.226366 - Amount after removing symbols: 
+2025-09-04T16:07:11.228114 - Regex did not match for amount: 
+2025-09-04T16:07:13.431636 - Amount input: 
+2025-09-04T16:07:13.432643 - Amount after z2h: 
+2025-09-04T16:07:13.432643 - Amount after removing symbols: 
+2025-09-04T16:07:13.432643 - Regex did not match for amount: 
+2025-09-04T16:07:13.720421 - Amount input: 
+2025-09-04T16:07:13.720421 - Amount after z2h: 
+2025-09-04T16:07:13.720421 - Amount after removing symbols: 
+2025-09-04T16:07:13.722427 - Regex did not match for amount: 
+2025-09-04T16:07:13.919776 - Amount input: 
+2025-09-04T16:07:13.919776 - Amount after z2h: 
+2025-09-04T16:07:13.919776 - Amount after removing symbols: 
+2025-09-04T16:07:13.919776 - Regex did not match for amount: 
+2025-09-04T16:07:14.368206 - Amount input: 
+2025-09-04T16:07:14.368206 - Amount after z2h: 
+2025-09-04T16:07:14.368206 - Amount after removing symbols: 
+2025-09-04T16:07:14.368206 - Regex did not match for amount: 
+2025-09-04T16:07:14.863775 - Amount input: 
+2025-09-04T16:07:14.863775 - Amount after z2h: 
+2025-09-04T16:07:14.863775 - Amount after removing symbols: 
+2025-09-04T16:07:14.865783 - Regex did not match for amount: 
+2025-09-04T16:07:15.751056 - Amount input: 
+2025-09-04T16:07:15.753063 - Amount after z2h: 
+2025-09-04T16:07:15.753063 - Amount after removing symbols: 
+2025-09-04T16:07:15.753063 - Regex did not match for amount: 
+2025-09-04T16:07:16.463905 - Amount input: 
+2025-09-04T16:07:16.463905 - Amount after z2h: 
+2025-09-04T16:07:16.463905 - Amount after removing symbols: 
+2025-09-04T16:07:16.465911 - Regex did not match for amount: 
+2025-09-04T16:07:16.671765 - Amount input: 
+2025-09-04T16:07:16.671765 - Amount after z2h: 
+2025-09-04T16:07:16.671765 - Amount after removing symbols: 
+2025-09-04T16:07:16.673771 - Regex did not match for amount: 
+2025-09-04T16:07:20.487571 - Amount input: 
+2025-09-04T16:07:20.487571 - Amount after z2h: 
+2025-09-04T16:07:20.489578 - Amount after removing symbols: 
+2025-09-04T16:07:20.489578 - Regex did not match for amount: 
+2025-09-04T16:07:20.584127 - Amount input: 
+2025-09-04T16:07:20.584127 - Amount after z2h: 
+2025-09-04T16:07:20.584127 - Amount after removing symbols: 
+2025-09-04T16:07:20.584127 - Regex did not match for amount: 
+2025-09-04T16:07:20.726594 - Amount input: 
+2025-09-04T16:07:20.728601 - Amount after z2h: 
+2025-09-04T16:07:20.728601 - Amount after removing symbols: 
+2025-09-04T16:07:20.728601 - Regex did not match for amount: 
+2025-09-04T16:07:20.800074 - Amount input: 
+2025-09-04T16:07:20.800074 - Amount after z2h: 
+2025-09-04T16:07:20.800074 - Amount after removing symbols: 
+2025-09-04T16:07:20.800074 - Regex did not match for amount: 
+2025-09-04T16:07:21.280379 - Amount input: 
+2025-09-04T16:07:21.280379 - Amount after z2h: 
+2025-09-04T16:07:21.280379 - Amount after removing symbols: 
+2025-09-04T16:07:21.280379 - Regex did not match for amount: 
+2025-09-04T16:07:21.399257 - Amount input: 
+2025-09-04T16:07:21.399257 - Amount after z2h: 
+2025-09-04T16:07:21.401263 - Amount after removing symbols: 
+2025-09-04T16:07:21.401263 - Regex did not match for amount: 
+2025-09-04T16:07:25.015245 - Amount input: \
+2025-09-04T16:07:25.017252 - Amount after z2h: \
+2025-09-04T16:07:25.017252 - Amount after removing symbols: 
+2025-09-04T16:07:25.017252 - Regex did not match for amount: 
+2025-09-04T16:07:26.735541 - Amount input: \3
+2025-09-04T16:07:26.735541 - Amount after z2h: \3
+2025-09-04T16:07:26.737547 - Amount after removing symbols: 3
+2025-09-04T16:07:59.210078 - Amount input: 
+2025-09-04T16:07:59.210078 - Amount after z2h: 
+2025-09-04T16:07:59.212084 - Amount after removing symbols: 
+2025-09-04T16:07:59.212084 - Regex did not match for amount: 
+2025-09-04T16:08:01.974415 - Amount input: 
+2025-09-04T16:08:01.974415 - Amount after z2h: 
+2025-09-04T16:08:01.974415 - Amount after removing symbols: 
+2025-09-04T16:08:01.974415 - Regex did not match for amount: 
+2025-09-04T16:08:03.600514 - Amount input: 
+2025-09-04T16:08:03.600514 - Amount after z2h: 
+2025-09-04T16:08:03.602521 - Amount after removing symbols: 
+2025-09-04T16:08:03.602521 - Regex did not match for amount: 
+2025-09-04T16:08:03.712877 - Amount input: 
+2025-09-04T16:08:03.712877 - Amount after z2h: 
+2025-09-04T16:08:03.712877 - Amount after removing symbols: 
+2025-09-04T16:08:03.712877 - Regex did not match for amount: 
+2025-09-04T16:08:03.875223 - Amount input: 
+2025-09-04T16:08:03.875223 - Amount after z2h: 
+2025-09-04T16:08:03.875223 - Amount after removing symbols: 
+2025-09-04T16:08:03.875223 - Regex did not match for amount: 
+2025-09-04T16:08:04.345088 - Amount input: 
+2025-09-04T16:08:04.345088 - Amount after z2h: 
+2025-09-04T16:08:04.347094 - Amount after removing symbols: 
+2025-09-04T16:08:04.347094 - Regex did not match for amount: 
+2025-09-04T16:08:04.513270 - Amount input: 
+2025-09-04T16:08:04.513270 - Amount after z2h: 
+2025-09-04T16:08:04.513270 - Amount after removing symbols: 
+2025-09-04T16:08:04.515278 - Regex did not match for amount: 
+2025-09-04T16:08:04.640148 - Amount input: 
+2025-09-04T16:08:04.642155 - Amount after z2h: 
+2025-09-04T16:08:04.642155 - Amount after removing symbols: 
+2025-09-04T16:08:04.642155 - Regex did not match for amount: 
+2025-09-04T16:08:06.446416 - Amount input: 
+2025-09-04T16:08:06.446416 - Amount after z2h: 
+2025-09-04T16:08:06.446416 - Amount after removing symbols: 
+2025-09-04T16:08:06.448420 - Regex did not match for amount: 
+2025-09-04T16:08:07.581817 - Amount input: 
+2025-09-04T16:08:07.583822 - Amount after z2h: 
+2025-09-04T16:08:07.583822 - Amount after removing symbols: 
+2025-09-04T16:08:07.583822 - Regex did not match for amount: 
+2025-09-04T16:08:08.529662 - Amount input: 
+2025-09-04T16:08:08.529662 - Amount after z2h: 
+2025-09-04T16:08:08.531667 - Amount after removing symbols: 
+2025-09-04T16:08:08.531667 - Regex did not match for amount: 
+2025-09-04T16:08:08.992400 - Amount input: 
+2025-09-04T16:08:08.994407 - Amount after z2h: 
+2025-09-04T16:08:08.994407 - Amount after removing symbols: 
+2025-09-04T16:08:08.994407 - Regex did not match for amount: 
+2025-09-04T16:08:10.433848 - Amount input: 
+2025-09-04T16:08:10.433848 - Amount after z2h: 
+2025-09-04T16:08:10.433848 - Amount after removing symbols: 
+2025-09-04T16:08:10.435594 - Regex did not match for amount: 
+2025-09-04T16:08:11.628987 - Amount input: 
+2025-09-04T16:08:11.630992 - Amount after z2h: 
+2025-09-04T16:08:11.630992 - Amount after removing symbols: 
+2025-09-04T16:08:11.630992 - Regex did not match for amount: 
+2025-09-04T16:08:12.547001 - Amount input: 
+2025-09-04T16:08:12.547001 - Amount after z2h: 
+2025-09-04T16:08:12.547001 - Amount after removing symbols: 
+2025-09-04T16:08:12.547001 - Regex did not match for amount: 
+2025-09-04T16:08:13.534306 - Amount input: 
+2025-09-04T16:08:13.534306 - Amount after z2h: 
+2025-09-04T16:08:13.534306 - Amount after removing symbols: 
+2025-09-04T16:08:13.536311 - Regex did not match for amount: 
+2025-09-04T16:08:14.650567 - Amount input: 
+2025-09-04T16:08:14.650567 - Amount after z2h: 
+2025-09-04T16:08:14.650567 - Amount after removing symbols: 
+2025-09-04T16:08:14.650567 - Regex did not match for amount: 
+2025-09-04T16:08:19.881741 - Amount input: 
+2025-09-04T16:08:19.883487 - Amount after z2h: 
+2025-09-04T16:08:19.883487 - Amount after removing symbols: 
+2025-09-04T16:08:19.883487 - Regex did not match for amount: 
+2025-09-04T16:08:23.368812 - Amount input: \
+2025-09-04T16:08:23.370818 - Amount after z2h: \
+2025-09-04T16:08:23.370818 - Amount after removing symbols: 
+2025-09-04T16:08:23.370818 - Regex did not match for amount: 
+2025-09-04T16:08:25.000883 - Amount input: \1
+2025-09-04T16:08:25.000883 - Amount after z2h: \1
+2025-09-04T16:08:25.002889 - Amount after removing symbols: 1
+2025-09-04T16:08:25.002889 - Regex matched. Num part: 1, Unit part: None
+2025-09-04T16:08:25.002889 - Amount converted to: 1
+2025-09-04T16:08:25.569872 - Amount input: \15
+2025-09-04T16:08:25.569872 - Amount after z2h: \15
+2025-09-04T16:08:25.571882 - Amount after removing symbols: 15
+2025-09-04T16:08:25.571882 - Regex matched. Num part: 15, Unit part: None
+2025-09-04T16:08:25.571882 - Amount converted to: 15
+2025-09-04T16:08:26.113862 - Amount input: \150
+2025-09-04T16:08:26.113862 - Amount after z2h: \150
+2025-09-04T16:08:26.113862 - Amount after removing symbols: 150
+2025-09-04T16:08:26.115870 - Regex matched. Num part: 150, Unit part: None
+2025-09-04T16:08:26.115870 - Amount converted to: 150
+2025-09-04T16:08:26.265103 - Amount input: \1500
+2025-09-04T16:08:26.265103 - Amount after z2h: \1500
+2025-09-04T16:08:26.267110 - Amount after removing symbols: 1500
+2025-09-04T16:08:26.267110 - Regex matched. Num part: 1500, Unit part: None
+2025-09-04T16:08:26.267110 - Amount converted to: 1500
+2025-09-04T16:08:26.616487 - Amount input: \1500 
+2025-09-04T16:08:26.618493 - Amount after z2h: \1500 
+2025-09-04T16:08:26.618493 - Amount after removing symbols: 1500 
+2025-09-04T16:08:26.618493 - Regex matched. Num part: 1500, Unit part: None
+2025-09-04T16:08:26.618493 - Amount converted to: 1500
+2025-09-04T16:08:27.104523 - Amount input: \1500
+2025-09-04T16:08:27.106529 - Amount after z2h: \1500
+2025-09-04T16:08:27.106529 - Amount after removing symbols: 1500
+2025-09-04T16:08:27.106529 - Regex matched. Num part: 1500, Unit part: None
+2025-09-04T16:08:27.106529 - Amount converted to: 1500
+2025-09-04T16:08:28.513924 - Amount input: \150
+2025-09-04T16:08:28.513924 - Amount after z2h: \150
+2025-09-04T16:08:28.513924 - Amount after removing symbols: 150
+2025-09-04T16:08:28.515931 - Regex matched. Num part: 150, Unit part: None
+2025-09-04T16:08:28.515931 - Amount converted to: 150
+2025-09-04T16:08:28.688955 - Amount input: \15
+2025-09-04T16:08:28.690961 - Amount after z2h: \15
+2025-09-04T16:08:28.690961 - Amount after removing symbols: 15
+2025-09-04T16:08:28.690961 - Regex matched. Num part: 15, Unit part: None
+2025-09-04T16:08:28.692968 - Amount converted to: 15
+2025-09-04T16:08:28.865311 - Amount input: \1
+2025-09-04T16:08:28.865311 - Amount after z2h: \1
+2025-09-04T16:08:28.867317 - Amount after removing symbols: 1
+2025-09-04T16:08:28.867317 - Regex matched. Num part: 1, Unit part: None
+2025-09-04T16:08:28.867317 - Amount converted to: 1
+2025-09-04T16:08:29.049147 - Amount input: \
+2025-09-04T16:08:29.051154 - Amount after z2h: \
+2025-09-04T16:08:29.051154 - Amount after removing symbols: 
+2025-09-04T16:08:29.051154 - Regex did not match for amount: 
+2025-09-04T16:08:32.809731 - Amount input: \1,500
+2025-09-04T16:08:32.809731 - Amount after z2h: \1,500
+2025-09-04T16:08:32.809731 - Amount after removing symbols: 1500
+2025-09-04T16:08:32.809731 - Regex matched. Num part: 1500, Unit part: None
+2025-09-04T16:08:32.811736 - Amount converted to: 1500
