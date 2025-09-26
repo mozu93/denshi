@@ -141,7 +141,6 @@ class SettingsDialog(QDialog):
                 self.other_org_doc_type_table.insertRow(row_position)
                 self.other_org_doc_type_table.setItem(row_position, 0, QTableWidgetItem(key))
                 self.other_org_doc_type_table.setItem(row_position, 1, QTableWidgetItem(value))
-
     def browse_root_dir(self):
         directory = QFileDialog.getExistingDirectory(self, "ルート保存ディレクトリを選択")
         if directory:
@@ -183,7 +182,6 @@ class SettingsDialog(QDialog):
             if key_item and value_item:
                 other_org_doc_types_to_save[key_item.text()] = value_item.text()
         self.config_manager.set_section('FolderNames_OtherOrganization', other_org_doc_types_to_save)
-
         self.accept()
 
     def add_doc_type(self):

@@ -38,7 +38,6 @@ class ConfigManager:
     def set(self, section, key, value):
         if not self.config.has_section(section):
             self.config.add_section(section)
-
         # セキュリティ: 危険なパス文字列をチェック
         str_value = str(value)
         if '../' in str_value or '..' in str_value:
