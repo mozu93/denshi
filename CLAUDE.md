@@ -10,8 +10,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Development
 ```bash
-# Run the application
+# Run the application (command line)
 python main.py
+
+# Run the application (double-click)
+# Double-click main.py or use 起動.bat for reliable startup
 
 # Install dependencies
 pip install -r requirements.txt
@@ -30,19 +33,21 @@ pyinstaller --noconsole --onefile --add-data "config.ini;." --add-data "電子�
 ### Directory Structure
 ```
 denshi/
-├── main.py                 # Application entry point
+├── main.py                 # Application entry point (with path fix)
 ├── main_window.py         # Main window with tab management
 ├── config.ini            # Configuration file (auto-generated)
+├── 起動.bat               # Batch file for reliable startup
 ├── models/               # Data processing layer
 │   ├── metadata_manager.py    # CSV-based document metadata
 │   ├── ocr_processor.py       # Tesseract OCR integration
 │   └── pdf_processor.py       # PyMuPDF document handling
 ├── views/                # UI components (PyQt6)
 │   ├── file_registration_tab.py  # PDF registration interface
-│   ├── file_search_tab.py        # Document search interface
+│   ├── file_search_tab.py        # Document search interface (optimized layout)
 │   ├── settings_dialog.py        # Application settings
 │   └── edit_dialog.py            # Metadata editing
 └── utils/                # Helper utilities
+    ├── ui_styles.py           # Unified UI styling system
     ├── config_manager.py      # INI file management
     ├── date_converter.py      # Japanese date conversion
     ├── validator.py           # Input validation
@@ -71,6 +76,12 @@ denshi/
 - Handles paths, UI settings, document categories
 - Auto-saves window dimensions and user preferences
 
+**UIStyles** (`utils/ui_styles.py`):
+- Unified styling system for consistent UI appearance
+- Meiryo font family with gray color scheme
+- Comprehensive styling for all UI components
+- Supports both button styles (normal and small variants)
+
 ### File Organization Pattern
 Documents are organized as:
 ```
@@ -98,10 +109,14 @@ Example: `001_20240901_10800_株式会社サンプル.pdf`
 - **PDF Preview**: Zoom, page navigation, OCR region selection
 - **Automatic File Naming**: Based on extracted/input metadata
 - **Year-based Organization**: Automatic folder creation and management
-- **Search Functionality**: Filter by year, document type, client, date, amount, memo
+- **Advanced Search**: Filter by year, document type, client, date, amount, memo with robust error handling
+- **Dynamic Date Ranges**: Automatic date range setting based on selected year
+- **Optimized UI Layout**: 50% width search conditions, maximized result display area
 - **Document Categories**: Configurable expenditure/income categories
 - **Japanese Date Conversion**: Wareki (和暦) to Western calendar
 - **Metadata Preservation**: CSV index with document integrity checks
+- **Unified Styling**: Consistent Meiryo font and gray color scheme throughout
+- **Multi-launch Support**: Both double-click and command-line execution
 
 ## Configuration
 
@@ -115,8 +130,11 @@ The application uses `config.ini` for settings:
 
 - Uses PyQt6 for modern GUI framework
 - Japanese language support throughout the interface
-- Comprehensive error handling and logging
+- Comprehensive error handling and logging with robust null-value protection
 - Supports bundling into standalone executable with PyInstaller
+- Working directory auto-correction for reliable double-click execution
 - OCR engine is pre-loaded at startup for better performance
-- Uses pandas for efficient CSV operations
+- Uses pandas for efficient CSV operations with NaN-safe comparisons
 - Document integrity maintained with file hashing
+- Unified UI styling system with Meiryo font and consistent color scheme
+- Optimized search interface layout for improved user experience

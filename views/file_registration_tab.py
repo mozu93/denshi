@@ -18,6 +18,9 @@ from models.ocr_processor import OcrProcessor
 from utils.date_converter import DateConverter
 from utils.validator import Validator
 from utils.file_hasher import get_file_hash
+from utils.processed_file_manager import ProcessedFileManager
+from models.client_manager import ClientManager
+from utils.ui_styles import apply_button_style, apply_small_button_style, apply_list_widget_style
 
 from PyQt6.QtWidgets import QFileDialog
 
@@ -80,12 +83,15 @@ class FileRegistrationTab(QWidget):
         self.zoom_level = 1.0
         self.date_converter = DateConverter()
         self.validator = Validator()
+        self.processed_file_manager = ProcessedFileManager()
+        self.client_manager = ClientManager(config_manager)
 
         self._create_widgets()
         self._setup_layout()
         self._connect_signals()
         self._load_initial_state()
         self._update_placeholder_visibility()
+        self._apply_styles()
 
     def _play_warning_sound(self):
         """システム警告音を再生"""
@@ -142,11 +148,12 @@ class FileRegistrationTab(QWidget):
         self.reload_doc_id_button = QPushButton(QIcon.fromTheme("view-refresh"), "再計算")
         self.issue_date_edit = QLineEdit()
         self.client_name_edit = QLineEdit()
+        self.register_client_button = QPushButton("登録")
+        self.recall_client_button = QPushButton("呼出")
         self.amount_edit = QLineEdit()
         self.memo_edit = QTextEdit()
         self.filename_preview_label = QLabel("(ファイル名プレビュー)")
         self.save_button = QPushButton("保存して次へ")
-        self.save_button.setStyleSheet("background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 12pt;")
 
     def _setup_layout(self):
         """Set up the layout of the tab."""
@@ -182,7 +189,14 @@ class FileRegistrationTab(QWidget):
         form_layout.addRow("通し番号:", doc_id_layout)
 
         form_layout.addRow("発行日:", self.issue_date_edit)
-        form_layout.addRow("取引先名:", self.client_name_edit)
+
+        # 取引先名のレイアウト（フィールド + ボタン）
+        client_name_layout = QHBoxLayout()
+        client_name_layout.addWidget(self.client_name_edit)
+        client_name_layout.addWidget(self.register_client_button)
+        client_name_layout.addWidget(self.recall_client_button)
+        form_layout.addRow("取引先名:", client_name_layout)
+
         form_layout.addRow("金額(税込):", self.amount_edit)
         form_layout.addRow("メモ:", self.memo_edit)
         form_layout.addRow("ファイル名:", self.filename_preview_label)
@@ -232,6 +246,8 @@ class FileRegistrationTab(QWidget):
         self.file_list_widget.model().rowsRemoved.connect(self._update_placeholder_visibility)
         self.pdf_preview_label.selection_changed.connect(self.on_region_selected)
         self.save_button.clicked.connect(self.save_and_next)
+        self.register_client_button.clicked.connect(self.register_client)
+        self.recall_client_button.clicked.connect(self.show_client_selection)
 
         self.zoom_in_action.triggered.connect(self.zoom_in)
         self.zoom_out_action.triggered.connect(self.zoom_out)
@@ -286,8 +302,36 @@ class FileRegistrationTab(QWidget):
             self.placeholder_label.show()
 
     def open_file_dialog(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "PDFファイルを選択", "", "PDF Files (*.pdf)")
+        """ファイルダイアログを開いてPDFファイルを選択
+
+        機能:
+        - 最後に使用したフォルダを記憶し次回表示
+        - 選択したフォルダの古いファイルをクリーンアップ（30日経過後削除）
+        """
+        # 最後に使用したフォルダパスを取得
+        last_folder = self.config_manager.get_last_folder_path()
+
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "PDFファイルを選択",
+            last_folder,
+            "PDF Files (*.pdf)"
+        )
+
         if files:
+            # 最初のファイルのフォルダパスを保存（次回用）
+            first_file_folder = os.path.dirname(files[0])
+            self.config_manager.set_last_folder_path(first_file_folder)
+
+            # 選択したフォルダの処理済ファイルをクリーンアップ
+            try:
+                deleted_count = self.processed_file_manager.cleanup_old_files(first_file_folder)
+                if deleted_count > 0:
+                    print(f"INFO: 30日経過した処理済ファイル {deleted_count}件を削除しました")
+            except Exception as e:
+                print(f"WARNING: 古いファイルの削除でエラー: {e}")
+
+            # ファイルをリストに追加
             for file in files:
                 self.add_file_to_list(file)
 
@@ -618,7 +662,22 @@ class FileRegistrationTab(QWidget):
                 self.metadata_manager.add_entry(formatted_year, metadata)
 
                 QMessageBox.information(self, "成功", f"ファイルを保存しました。\n{target_path}")
-                
+
+                # 元ファイルを処理済フォルダに移動
+                try:
+                    source_file_path = current_item.data(Qt.ItemDataRole.UserRole)
+                    if source_file_path and os.path.exists(source_file_path):
+                        moved_path = self.processed_file_manager.move_to_processed_folder(source_file_path)
+                        # 30日経過後のファイル削除処理も実行
+                        source_folder = os.path.dirname(source_file_path)
+                        self.processed_file_manager.cleanup_old_files(source_folder)
+                    else:
+                        print(f"ソースファイルが見つかりません: {source_file_path}")
+                except Exception as move_error:
+                    print(f"ファイル移動エラーの詳細: {move_error}")
+                    print(f"エラー発生時のファイルパス: {source_file_path}")
+                    QMessageBox.warning(self, "警告", f"ファイルの移動に失敗しました。\n元ファイル: {source_file_path}\nエラー: {move_error}")
+
                 row = self.file_list_widget.row(current_item)
                 self.file_list_widget.takeItem(row)
 
@@ -644,6 +703,76 @@ class FileRegistrationTab(QWidget):
         else:
             self.pdf_preview_label.clear()
             self.pdf_preview_label.setText("ここにPDFのプレビューが表示されます")
+
+    def register_client(self):
+        """現在の取引先名をフリガナ付きで登録"""
+        client_name = self.client_name_edit.text().strip()
+        if not client_name:
+            QMessageBox.warning(self, "入力エラー", "取引先名を入力してください。")
+            return
+
+        # 取引先名の重複チェック（フリガナ入力前）
+        duplicate_name, _ = self.client_manager.check_duplicate_details(client_name, "")
+        if duplicate_name:
+            QMessageBox.warning(self, "重複エラー", f"取引先名「{client_name}」は既に登録されています。")
+            return
+
+        # フリガナ入力ダイアログを表示
+        from PyQt6.QtWidgets import QInputDialog
+        furigana, ok = QInputDialog.getText(
+            self, "フリガナ入力",
+            f"取引先名「{client_name}」のフリガナを入力してください:"
+        )
+
+        if ok and furigana.strip():
+            # フリガナの重複チェック
+            _, duplicate_furigana = self.client_manager.check_duplicate_details(client_name, furigana.strip())
+            if duplicate_furigana:
+                QMessageBox.warning(self, "重複エラー", f"フリガナ「{furigana.strip()}」は既に登録されています。")
+                return
+
+            # 登録実行
+            if self.client_manager.add_client(client_name, furigana.strip()):
+                QMessageBox.information(self, "成功", "取引先を登録しました。")
+            else:
+                QMessageBox.critical(self, "エラー", "取引先の登録に失敗しました。")
+        elif ok:
+            QMessageBox.warning(self, "入力エラー", "フリガナを入力してください。")
+
+    def show_client_selection(self):
+        """取引先選択ダイアログを表示"""
+        clients = self.client_manager.get_all_clients()
+        if not clients:
+            QMessageBox.information(self, "情報", "登録されている取引先がありません。")
+            return
+
+        # 取引先名リストを作成
+        client_names = [f"{client['name']} ({client['furigana']})" for client in clients]
+
+        from PyQt6.QtWidgets import QInputDialog
+        selected_item, ok = QInputDialog.getItem(
+            self, "取引先選択",
+            "取引先を選択してください:",
+            client_names, 0, False
+        )
+
+        if ok and selected_item:
+            # 選択された取引先名を抽出（フリガナ部分を除去）
+            client_name = selected_item.split(' (')[0]
+            self.client_name_edit.setText(client_name)
+
+    def _apply_styles(self):
+        """UIスタイルを適用"""
+        # メインボタン
+        apply_button_style(self.save_button)
+
+        # 小さなボタン
+        apply_small_button_style(self.reload_doc_id_button)
+        apply_small_button_style(self.register_client_button)
+        apply_small_button_style(self.recall_client_button)
+
+        # リストウィジェット
+        apply_list_widget_style(self.file_list_widget)
 
     def save_splitter_sizes(self):
         """Save splitter sizes to configuration."""

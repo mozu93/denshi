@@ -108,3 +108,12 @@ class ConfigManager:
     def set_splitter_sizes(self, splitter_name, sizes):
         sizes_str = ','.join(str(s) for s in sizes)
         self.set('UI', f'{splitter_name}_sizes', sizes_str)
+
+    # フォルダ記憶機能
+    def get_last_folder_path(self, fallback=''):
+        """最後に使用したフォルダパスを取得"""
+        return self.get('LastInputs', 'last_folder_path', fallback=fallback)
+
+    def set_last_folder_path(self, folder_path):
+        """最後に使用したフォルダパスを保存"""
+        self.set('LastInputs', 'last_folder_path', folder_path)

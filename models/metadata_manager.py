@@ -241,21 +241,23 @@ class MetadataManager:
 
         if date_from:
             date_from_int = int(date_from.toString("yyyyMMdd"))
-            df = df[df['issue_date'] >= date_from_int]
+            df = df[df['issue_date'].notna() & (df['issue_date'] >= date_from_int)]
 
         if date_to:
             date_to_int = int(date_to.toString("yyyyMMdd"))
-            df = df[df['issue_date'] <= date_to_int]
+            df = df[df['issue_date'].notna() & (df['issue_date'] <= date_to_int)]
 
         if amount_from:
             try:
-                df = df[df['amount'] >= int(amount_from)]
+                amount_from_int = int(amount_from)
+                df = df[df['amount'].notna() & (df['amount'] >= amount_from_int)]
             except (ValueError, TypeError):
                 pass
 
         if amount_to:
             try:
-                df = df[df['amount'] <= int(amount_to)]
+                amount_to_int = int(amount_to)
+                df = df[df['amount'].notna() & (df['amount'] <= amount_to_int)]
             except (ValueError, TypeError):
                 pass
                 

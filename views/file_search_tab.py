@@ -15,6 +15,7 @@ from functools import partial
 # Import the new dialog
 from views.edit_dialog import EditDialog
 from utils.validator import Validator
+from utils.ui_styles import apply_button_style, apply_table_style
 
 class FileSearchTab(QWidget):
     def __init__(self, config_manager, metadata_manager, parent=None):
@@ -41,7 +42,7 @@ class FileSearchTab(QWidget):
         if saved_sizes and len(saved_sizes) == 2:
             search_splitter.setSizes(saved_sizes)
         else:
-            search_splitter.setSizes([200, 400])  # 検索条件:200, 結果:400
+            search_splitter.setSizes([200, 500])  # 検索条件:200, 結果:500（適切なバランスに調整）
 
         self.search_splitter = search_splitter
         main_layout.addWidget(search_splitter)
@@ -52,12 +53,23 @@ class FileSearchTab(QWidget):
     def _create_search_group(self):
         """Creates the search conditions group box."""
         search_group = QGroupBox("検索条件")
-        layout = QGridLayout()
+
+        # 横幅を50%に制限するためのコンテナレイアウト
+        container_layout = QHBoxLayout()
+
+        # 検索条件フォームのウィジェット
+        form_widget = QWidget()
+        form_widget.setMaximumWidth(600)  # 最大横幅を制限
+        layout = QVBoxLayout(form_widget)
+        layout.setContentsMargins(10, 10, 10, 0)  # 下部マージンを0に
+        layout.setSpacing(5)  # レイアウト間のスペーシングを縮小
 
         # Search fields
         self.year_combo = QComboBox()
+        self.year_combo.currentTextChanged.connect(self._on_year_changed)
         self.reload_year_button = QPushButton(QIcon.fromTheme("view-refresh"), "再読込")
         self.reload_year_button.clicked.connect(self._populate_year_combo)
+        apply_button_style(self.reload_year_button)
         year_layout = QHBoxLayout()
         year_layout.addWidget(self.year_combo, 1)
         year_layout.addWidget(self.reload_year_button)
@@ -68,6 +80,8 @@ class FileSearchTab(QWidget):
         self.date_from_edit.setSpecialValueText("指定なし")  # 空欄表示用
         self.date_from_edit.setMinimumDate(QDate(1900, 1, 1))  # 最小日付を設定
         self.date_from_edit.setDate(QDate(1900, 1, 1))  # 最小日付に設定して「指定なし」を表示
+        self.date_from_edit.dateChanged.connect(self._on_from_date_changed)
+
         self.date_to_edit = QDateEdit(calendarPopup=True)
         self.date_to_edit.setSpecialValueText("指定なし")  # 空欄表示用
         self.date_to_edit.setMinimumDate(QDate(1900, 1, 1))  # 最小日付を設定
@@ -96,33 +110,42 @@ class FileSearchTab(QWidget):
         amount_layout.addWidget(QLabel("To:"))
         amount_layout.addWidget(self.amount_to_edit)
 
-        # Layout setup
+        # Layout setup - FormLayoutでコンパクトに配置
         form_layout = QFormLayout()
+        form_layout.setVerticalSpacing(8)  # 行間を狭くする
+        form_layout.setContentsMargins(0, 0, 0, 0)
         form_layout.addRow("年:", year_layout)
         form_layout.addRow("書類種別:", self.doc_type_combo)
         form_layout.addRow("取引先名:", self.client_name_edit)
         form_layout.addRow("発行日:", date_layout)
         form_layout.addRow("金額:", amount_layout)
         form_layout.addRow("メモ:", self.memo_edit)
-        
-        layout.addLayout(form_layout, 0, 0, 1, 2)
 
-        # Buttons
+        layout.addLayout(form_layout)
+
+        # Buttonsをメモの直下に配置（スペースを完全に削除）
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)  # 全てのマージンを削除
+
         self.search_button = QPushButton(QIcon.fromTheme("edit-find"), "検索実行")
         self.search_button.clicked.connect(self._search_files)
+        apply_button_style(self.search_button)
 
-        # 検索ボタンのスタイル設定（文字サイズ+3ポイント、赤色背景）
-        current_font = self.search_button.font()
-        current_font.setPointSize(current_font.pointSize() + 3)
-        self.search_button.setFont(current_font)
-        self.search_button.setStyleSheet("QPushButton { background-color: #ff4444; color: white; font-weight: bold; }")
         self.clear_button = QPushButton(QIcon.fromTheme("edit-clear"), "クリア")
         self.clear_button.clicked.connect(self._clear_search_fields)
-        
-        layout.addWidget(self.search_button, 1, 0)
-        layout.addWidget(self.clear_button, 1, 1)
+        apply_button_style(self.clear_button)
 
-        search_group.setLayout(layout)
+        button_layout.addWidget(self.search_button)
+        button_layout.addWidget(self.clear_button)
+        button_layout.addStretch()  # 右側にスペースを追加
+
+        layout.addLayout(button_layout)
+
+        # コンテナに追加
+        container_layout.addWidget(form_widget)
+        container_layout.addStretch()  # 右側にスペースを追加
+
+        search_group.setLayout(container_layout)
         return search_group
 
     def _populate_year_combo(self):
@@ -131,8 +154,12 @@ class FileSearchTab(QWidget):
         if available_years:
             self.year_combo.addItems(available_years)
             self.year_combo.setCurrentIndex(0)
+            # 初期選択年に基づいて日付フィールドを更新
+            if len(available_years) > 0:
+                self._on_year_changed(available_years[0])
         else:
             self.year_combo.addItem("年なし")
+            self._reset_date_fields()
 
     def _populate_doc_type_combo(self):
         self.doc_type_combo.clear()
@@ -151,8 +178,8 @@ class FileSearchTab(QWidget):
         layout = QVBoxLayout()
 
         self.results_table = QTableWidget()
-        # テーブルの最小高さを設定（約５行分）
-        self.results_table.setMinimumHeight(150)
+        # テーブルの最小高さを削除して、より多くの行を表示
+        # self.results_table.setMinimumHeight(150)  # コメントアウト
         self.results_table.setColumnCount(9)
         self.results_table.setHorizontalHeaderLabels([
             "ID", "通し番号", "発行日", "金額(税込)", "取引先名",
@@ -161,14 +188,23 @@ class FileSearchTab(QWidget):
         self.results_table.setColumnHidden(0, True) # Hide ID column
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers) # Make table read-only
         self.results_table.cellDoubleClicked.connect(self._open_pdf)
+
+        # スクロールバーの設定を明示的に設定
+        from PyQt6.QtCore import Qt
+        self.results_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        apply_table_style(self.results_table)
         
         header = self.results_table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+
+        # オートフィット設定 - 内容に合わせて列幅を自動調整
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+
+        # メモ列（列6）のみストレッチモードで残りスペースを使用
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+
         self.results_table.setWordWrap(True)
-        
-        # Adjust column widths
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
 
         layout.addWidget(self.results_table)
         results_group.setLayout(layout)
@@ -191,9 +227,18 @@ class FileSearchTab(QWidget):
         # No need for isdigit() check as it comes from valid folder names
 
         # Collect search criteria
-        # 最小日付（1900/1/1）の場合は検索条件に含めない
-        date_from = self.date_from_edit.date() if self.date_from_edit.date() > QDate(1900, 1, 1) else None
-        date_to = self.date_to_edit.date() if self.date_to_edit.date() > QDate(1900, 1, 1) else None
+        # 最小日付（1900/1/1）または年の1月1日の場合は検索条件に含めない
+        year = int(year_nendo.replace("年", "")) if year_nendo and year_nendo != "年なし" else None
+        current_from_date = self.date_from_edit.date()
+        current_to_date = self.date_to_edit.date()
+
+        # 年の1月1日かどうかをチェック
+        is_year_start_from = (year and current_from_date == QDate(year, 1, 1))
+        is_year_start_to = (year and current_to_date == QDate(year, 1, 1))
+
+        # 最小日付または年の1月1日の場合は条件に含めない
+        date_from = None if (current_from_date <= QDate(1900, 1, 1) or is_year_start_from) else current_from_date
+        date_to = None if (current_to_date <= QDate(1900, 1, 1) or is_year_start_to) else current_to_date
 
         criteria = {
             "year_nendo": year_nendo,
@@ -246,10 +291,12 @@ class FileSearchTab(QWidget):
             record_id = row.get('id')
             edit_btn = QPushButton(QIcon.fromTheme("document-edit"), "編集")
             edit_btn.clicked.connect(partial(self._edit_row, record_id))
+            apply_button_style(edit_btn)
             self.results_table.setCellWidget(row_position, 7, edit_btn)
 
             delete_btn = QPushButton(QIcon.fromTheme("edit-delete"), "削除")
             delete_btn.clicked.connect(partial(self._delete_row, record_id))
+            apply_button_style(delete_btn)
             self.results_table.setCellWidget(row_position, 8, delete_btn)
 
     def _open_pdf(self, row, column):
@@ -373,6 +420,49 @@ class FileSearchTab(QWidget):
         self.amount_to_edit.clear()
         self.memo_edit.clear()
         self.results_table.setRowCount(0)
+
+    def _on_year_changed(self, year_text):
+        """年が変更された時に日付フィールドを更新"""
+        if year_text and year_text != "年なし":
+            try:
+                year = int(year_text.replace("年", ""))
+                # From日付を年の1月1日に設定
+                from_date = QDate(year, 1, 1)
+                self.date_from_edit.setDate(from_date)
+
+                # To日付も年の1月1日に設定（後でFrom日付変更イベントで調整される）
+                self.date_to_edit.setDate(from_date)
+
+                # カレンダーの表示年を設定
+                self.date_from_edit.setMinimumDate(QDate(year, 1, 1))
+                self.date_from_edit.setMaximumDate(QDate(year, 12, 31))
+                self.date_to_edit.setMinimumDate(QDate(year, 1, 1))
+                self.date_to_edit.setMaximumDate(QDate(year, 12, 31))
+
+            except ValueError:
+                # 年の解析に失敗した場合は「指定なし」に戻す
+                self._reset_date_fields()
+        else:
+            self._reset_date_fields()
+
+    def _on_from_date_changed(self, date):
+        """From日付が変更された時にTo日付を更新"""
+        if date > QDate(1900, 1, 1):  # 「指定なし」でない場合
+            # To日付をFrom日付以降に設定（同じ日付から開始）
+            if self.date_to_edit.date() < date:
+                self.date_to_edit.setDate(date)
+            # To日付の最小値をFrom日付に設定
+            self.date_to_edit.setMinimumDate(date)
+
+    def _reset_date_fields(self):
+        """日付フィールドを初期状態にリセット"""
+        self.date_from_edit.setMinimumDate(QDate(1900, 1, 1))
+        self.date_from_edit.setMaximumDate(QDate(2100, 12, 31))
+        self.date_from_edit.setDate(QDate(1900, 1, 1))  # 「指定なし」表示
+
+        self.date_to_edit.setMinimumDate(QDate(1900, 1, 1))
+        self.date_to_edit.setMaximumDate(QDate(2100, 12, 31))
+        self.date_to_edit.setDate(QDate(1900, 1, 1))    # 「指定なし」表示
 
     def refresh_data(self):
         """Public method to allow refreshing the data in the combo boxes."""
