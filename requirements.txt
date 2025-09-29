@@ -4,3 +4,4 @@ pytesseract
 jaconv
 pandas
 send2trash
+filelock

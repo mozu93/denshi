@@ -118,3 +118,7 @@ dmypy.json
 
 # Custom
 電子帳簿保存/
+
+# User-specific configuration files
+config.ini
+shared_config.path

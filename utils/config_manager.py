@@ -1,27 +1,30 @@
 import configparser
 import logging
+from filelock import Timeout, FileLock
 
 class ConfigManager:
     def __init__(self, config_path='config.ini'):
         self.config_path = config_path
+        self.lock_path = self.config_path + ".lock"
+        # タイムアウトを5秒に設定
+        self.lock = FileLock(self.lock_path, timeout=5)
         self.config = configparser.ConfigParser()
+        
         try:
-            # config.iniの読み込み
-            # - ファイルが存在しない、または読み取り権限がない場合にIOErrorが発生する可能性がある
-            # - ファイルの内容がINI形式として不正な場合にParsingErrorが発生する可能性がある
+            # 読み込み時にもロックを試みる
+            with self.lock.acquire(timeout=5):
+                self.config.read(self.config_path, encoding='utf-8')
+        except Timeout:
+            # 起動時に他のユーザーが編集中でも、とりあえず読み込みは試みる
+            logging.warning(f"設定ファイル '{self.config_path}' のロックを取得できませんでした（読み込み時）。読み込みを続行します。")
             self.config.read(self.config_path, encoding='utf-8')
         except (IOError, configparser.Error) as e:
-            # 読み込みに失敗した場合はログを出力し、空のコンフィグとして処理を続行する。
-            # これにより、アプリケーション起動時に設定が読み込めなくてもクラッシュせず、
-            # デフォルト値で動作し、終了時に新しい設定ファイルが作成されることを期待する。
             logging.error(f"設定ファイル '{self.config_path}' の読み込みに失敗しました: {e}")
 
     def get(self, section, key, fallback=None):
-        # 指定されたセクションやキーが存在しない場合に備え、fallback値を提供する
         return self.config.get(section, key, fallback=fallback)
 
     def get_section(self, section):
-        # 指定されたセクションが存在しない場合、空の辞書を返す
         if self.config.has_section(section):
             return dict(self.config.items(section))
         return {}
@@ -31,33 +34,30 @@ class ConfigManager:
             self.config.remove_section(section)
         self.config.add_section(section)
         for key, value in data.items():
-            # 値はすべて文字列に変換して保存する
             self.config.set(section, key, str(value))
         self.save()
 
     def set(self, section, key, value):
         if not self.config.has_section(section):
             self.config.add_section(section)
-        # セキュリティ: 危険なパス文字列をチェック
         str_value = str(value)
         if '../' in str_value or '..' in str_value:
             logging.warning(f"危険なパス文字列が検出されました: {str_value}")
-            # 危険な文字列を無害化
             str_value = str_value.replace('../', '').replace('..', '')
-
-        # 値はすべて文字列に変換して保存する
         self.config.set(section, key, str_value)
         self.save()
 
     def save(self):
         try:
-            # config.iniへの書き込み
-            # - 書き込み権限がない場合にIOError/OSErrorが発生する可能性がある
-            with open(self.config_path, 'w', encoding='utf-8') as configfile:
-                self.config.write(configfile)
+            # 書き込み時にロックを取得
+            with self.lock.acquire(timeout=5):
+                with open(self.config_path, 'w', encoding='utf-8') as configfile:
+                    self.config.write(configfile)
+        except Timeout:
+            logging.warning(f"設定ファイル '{self.config_path}' のロック取得に失敗しました。")
+            # ユーザーフレンドリーなエラーメッセージを投げる
+            raise RuntimeError("他のユーザーが設定を編集中です。しばらくしてから再度お試しください。")
         except (IOError, OSError) as e:
-            # 書き込み失敗はクリティカルなため、ログを出力し例外を再送出する。
-            # 呼び出し元でこのエラーを捕捉し、ユーザーに通知する必要がある。
             logging.error(f"設定ファイル '{self.config_path}' の保存に失敗しました: {e}")
             raise RuntimeError(f"設定ファイルの保存に失敗しました: {e}")
 
@@ -66,7 +66,6 @@ class ConfigManager:
 
     def set_last_input(self, key, value):
         self.set('LastInputs', key, value)
-        # set()内でsave()が呼ばれるため、ここでは不要
 
     def get_tesseract_path(self):
         return self.get('Tesseract', 'Path', fallback='')
@@ -74,7 +73,6 @@ class ConfigManager:
     def set_tesseract_path(self, path):
         self.set('Tesseract', 'Path', path)
 
-    # UI設定関連
     def get_ui_font_size(self, fallback=10):
         try:
             return int(self.get('UI', 'font_size', fallback=str(fallback)))
@@ -109,11 +107,8 @@ class ConfigManager:
         sizes_str = ','.join(str(s) for s in sizes)
         self.set('UI', f'{splitter_name}_sizes', sizes_str)
 
-    # フォルダ記憶機能
     def get_last_folder_path(self, fallback=''):
-        """最後に使用したフォルダパスを取得"""
         return self.get('LastInputs', 'last_folder_path', fallback=fallback)
 
     def set_last_folder_path(self, folder_path):
-        """最後に使用したフォルダパスを保存"""
         self.set('LastInputs', 'last_folder_path', folder_path)

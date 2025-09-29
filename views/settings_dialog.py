@@ -1,6 +1,9 @@
+import os
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QLabel, QHBoxLayout, QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QTabWidget, QWidget, QSplitter, QFormLayout
 from models.client_manager import ClientManager
 from utils.ui_styles import apply_button_style, apply_small_button_style, apply_table_style
+
+SHARED_CONFIG_FILENAME = 'shared_config.path'
 
 class SettingsDialog(QDialog):
     def __init__(self, config_manager, metadata_manager, parent=None):
@@ -27,6 +30,26 @@ class SettingsDialog(QDialog):
         self.splitter.addWidget(self.left_widget)
         self.splitter.addWidget(self.right_widget)
         self.main_layout.addWidget(self.splitter)
+
+        # --- 共有設定 --- #
+        shared_config_group = QGroupBox("共有設定")
+        shared_config_layout = QVBoxLayout()
+        self.shared_config_path_layout = QHBoxLayout()
+        self.shared_config_path_label = QLabel("共有設定ファイル(config.ini)のパス:")
+        self.shared_config_path_edit = QLineEdit()
+        self.shared_config_path_button = QPushButton("参照")
+        self.shared_config_path_button.clicked.connect(self.browse_shared_config_path)
+        self.shared_config_path_layout.addWidget(self.shared_config_path_label)
+        self.shared_config_path_layout.addWidget(self.shared_config_path_edit)
+        self.shared_config_path_layout.addWidget(self.shared_config_path_button)
+        shared_config_layout.addLayout(self.shared_config_path_layout)
+        
+        self.clear_shared_config_button = QPushButton("共有設定を解除")
+        self.clear_shared_config_button.clicked.connect(self.clear_shared_config_path)
+        shared_config_layout.addWidget(self.clear_shared_config_button)
+        
+        shared_config_group.setLayout(shared_config_layout)
+        self.left_layout.addWidget(shared_config_group)
 
         # Root Save Directory
         root_dir_group = QGroupBox("保存先設定")
@@ -117,7 +140,7 @@ class SettingsDialog(QDialog):
 
         # Buttons
         self.button_layout = QHBoxLayout()
-        self.save_button = QPushButton("保存")
+        self.save_button = QPushButton("保存して閉じる")
         self.save_button.clicked.connect(self.save_settings)
         self.cancel_button = QPushButton("キャンセル")
         self.cancel_button.clicked.connect(self.reject)
@@ -173,6 +196,12 @@ class SettingsDialog(QDialog):
         self._apply_styles()
 
     def load_settings(self):
+        # 共有設定パスの読み込み
+        shared_config_path_file = os.path.join(os.path.dirname(__file__), '..', SHARED_CONFIG_FILENAME)
+        if os.path.exists(shared_config_path_file):
+            with open(shared_config_path_file, 'r', encoding='utf-8') as f:
+                self.shared_config_path_edit.setText(f.read().strip())
+
         root_dir = self.config_manager.get('Paths', 'root_save_directory')
         self.root_dir_edit.setText(root_dir)
 
@@ -208,6 +237,15 @@ class SettingsDialog(QDialog):
 
         # 取引先データを読み込み
         self.load_clients()
+
+    def browse_shared_config_path(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, '共有設定ファイルを選択', '', 'INIファイル (*.ini)')
+        if file_path:
+            self.shared_config_path_edit.setText(file_path)
+
+    def clear_shared_config_path(self):
+        self.shared_config_path_edit.clear()
+
     def browse_root_dir(self):
         directory = QFileDialog.getExistingDirectory(self, "ルート保存ディレクトリを選択")
         if directory:
@@ -219,37 +257,72 @@ class SettingsDialog(QDialog):
             self.tesseract_path_edit.setText(file_path)
 
     def save_settings(self):
-        root_dir = self.root_dir_edit.text()
-        self.config_manager.set('Paths', 'root_save_directory', root_dir)
-        self.new_root_dir = root_dir
+        try:
+            # --- 共有設定の保存 ---
+            shared_config_path = self.shared_config_path_edit.text().strip()
+            shared_config_path_file = os.path.join(os.path.dirname(__file__), '..', SHARED_CONFIG_FILENAME)
+            
+            path_changed = False
+            current_path = ""
+            if os.path.exists(shared_config_path_file):
+                with open(shared_config_path_file, 'r', encoding='utf-8') as f:
+                    current_path = f.read().strip()
 
-        tesseract_path = self.tesseract_path_edit.text()
-        self.config_manager.set_tesseract_path(tesseract_path)
+            if shared_config_path and shared_config_path != current_path:
+                try:
+                    with open(shared_config_path_file, 'w', encoding='utf-8') as f:
+                        f.write(shared_config_path)
+                    path_changed = True
+                except Exception as e:
+                    QMessageBox.critical(self, "エラー", f"共有設定ファイルの保存に失敗しました: {e}")
+                    return
+            elif not shared_config_path and os.path.exists(shared_config_path_file):
+                try:
+                    os.remove(shared_config_path_file)
+                    path_changed = True
+                except Exception as e:
+                    QMessageBox.critical(self, "エラー", f"共有設定の解除に失敗しました: {e}")
+                    return
 
-        expenditure_doc_types_to_save = {}
-        for row in range(self.expenditure_doc_type_table.rowCount()):
-            key_item = self.expenditure_doc_type_table.item(row, 0)
-            value_item = self.expenditure_doc_type_table.item(row, 1)
-            if key_item and value_item:
-                expenditure_doc_types_to_save[key_item.text()] = value_item.text()
-        self.config_manager.set_section('FolderNames_Expenditure', expenditure_doc_types_to_save)
+            # --- その他の設定の保存 ---
+            root_dir = self.root_dir_edit.text()
+            self.config_manager.set('Paths', 'root_save_directory', root_dir)
+            self.new_root_dir = root_dir
 
-        income_doc_types_to_save = {}
-        for row in range(self.income_doc_type_table.rowCount()):
-            key_item = self.income_doc_type_table.item(row, 0)
-            value_item = self.income_doc_type_table.item(row, 1)
-            if key_item and value_item:
-                income_doc_types_to_save[key_item.text()] = value_item.text()
-        self.config_manager.set_section('FolderNames_Income', income_doc_types_to_save)
+            tesseract_path = self.tesseract_path_edit.text()
+            self.config_manager.set_tesseract_path(tesseract_path)
 
-        other_org_doc_types_to_save = {}
-        for row in range(self.other_org_doc_type_table.rowCount()):
-            key_item = self.other_org_doc_type_table.item(row, 0)
-            value_item = self.other_org_doc_type_table.item(row, 1)
-            if key_item and value_item:
-                other_org_doc_types_to_save[key_item.text()] = value_item.text()
-        self.config_manager.set_section('FolderNames_OtherOrganization', other_org_doc_types_to_save)
-        self.accept()
+            expenditure_doc_types_to_save = {}
+            for row in range(self.expenditure_doc_type_table.rowCount()):
+                key_item = self.expenditure_doc_type_table.item(row, 0)
+                value_item = self.expenditure_doc_type_table.item(row, 1)
+                if key_item and value_item:
+                    expenditure_doc_types_to_save[key_item.text()] = value_item.text()
+            self.config_manager.set_section('FolderNames_Expenditure', expenditure_doc_types_to_save)
+
+            income_doc_types_to_save = {}
+            for row in range(self.income_doc_type_table.rowCount()):
+                key_item = self.income_doc_type_table.item(row, 0)
+                value_item = self.income_doc_type_table.item(row, 1)
+                if key_item and value_item:
+                    income_doc_types_to_save[key_item.text()] = value_item.text()
+            self.config_manager.set_section('FolderNames_Income', income_doc_types_to_save)
+
+            other_org_doc_types_to_save = {}
+            for row in range(self.other_org_doc_type_table.rowCount()):
+                key_item = self.other_org_doc_type_table.item(row, 0)
+                value_item = self.other_org_doc_type_table.item(row, 1)
+                if key_item and value_item:
+                    other_org_doc_types_to_save[key_item.text()] = value_item.text()
+            self.config_manager.set_section('FolderNames_OtherOrganization', other_org_doc_types_to_save)
+            
+            if path_changed:
+                QMessageBox.information(self, "再起動が必要です", "共有設定が変更されました。アプリケーションを再起動してください。")
+
+            self.accept()
+
+        except RuntimeError as e:
+            QMessageBox.critical(self, "保存エラー", str(e))
 
     def add_doc_type(self):
         key = self.new_doc_type_key_edit.text().strip()
@@ -322,38 +395,39 @@ class SettingsDialog(QDialog):
 
     def add_or_update_client(self):
         """取引先を追加または更新"""
-        name = self.new_client_name_edit.text().strip()
-        furigana = self.new_client_furigana_edit.text().strip()
+        try:
+            name = self.new_client_name_edit.text().strip()
+            furigana = self.new_client_furigana_edit.text().strip()
 
-        if not name or not furigana:
-            QMessageBox.warning(self, "入力エラー", "取引先名とフリガナの両方を入力してください。")
-            return
+            if not name or not furigana:
+                QMessageBox.warning(self, "入力エラー", "取引先名とフリガナの両方を入力してください。")
+                return
 
-        if self.editing_client_id:
-            # 編集モード
-            if self.client_manager.update_client(self.editing_client_id, name, furigana):
-                QMessageBox.information(self, "成功", "取引先を更新しました。")
-                self.cancel_edit()
-                self.load_clients()
-            else:
-                # 重複チェックでエラーの場合
-                if self.client_manager.is_duplicate(name, furigana, exclude_id=self.editing_client_id):
-                    QMessageBox.warning(self, "重複エラー", "同じ取引先名またはフリガナが既に登録されています。")
+            if self.editing_client_id:
+                # 編集モード
+                if self.client_manager.update_client(self.editing_client_id, name, furigana):
+                    QMessageBox.information(self, "成功", "取引先を更新しました。")
+                    self.cancel_edit()
+                    self.load_clients()
                 else:
-                    QMessageBox.critical(self, "エラー", "取引先の更新に失敗しました。")
-        else:
-            # 追加モード
-            if self.client_manager.add_client(name, furigana):
-                QMessageBox.information(self, "成功", "取引先を追加しました。")
-                self.new_client_name_edit.clear()
-                self.new_client_furigana_edit.clear()
-                self.load_clients()
+                    if self.client_manager.is_duplicate(name, furigana, exclude_id=self.editing_client_id):
+                        QMessageBox.warning(self, "重複エラー", "同じ取引先名またはフリガナが既に登録されています。")
+                    else:
+                        QMessageBox.critical(self, "エラー", "取引先の更新に失敗しました。")
             else:
-                # 重複チェックでエラーの場合
-                if self.client_manager.is_duplicate(name, furigana):
-                    QMessageBox.warning(self, "重複エラー", "同じ取引先名またはフリガナが既に登録されています。")
+                # 追加モード
+                if self.client_manager.add_client(name, furigana):
+                    QMessageBox.information(self, "成功", "取引先を追加しました。")
+                    self.new_client_name_edit.clear()
+                    self.new_client_furigana_edit.clear()
+                    self.load_clients()
                 else:
-                    QMessageBox.critical(self, "エラー", "取引先の追加に失敗しました。")
+                    if self.client_manager.is_duplicate(name, furigana):
+                        QMessageBox.warning(self, "重複エラー", "同じ取引先名またはフリガナが既に登録されています。")
+                    else:
+                        QMessageBox.critical(self, "エラー", "取引先の追加に失敗しました。")
+        except RuntimeError as e:
+            QMessageBox.critical(self, "エラー", str(e))
 
     def edit_client(self):
         """取引先を編集"""
@@ -394,25 +468,28 @@ class SettingsDialog(QDialog):
 
     def delete_client(self):
         """取引先を削除"""
-        current_row = self.client_table.currentRow()
-        if current_row == -1:
-            QMessageBox.information(self, "選択なし", "削除する取引先を選択してください。")
-            return
+        try:
+            current_row = self.client_table.currentRow()
+            if current_row == -1:
+                QMessageBox.information(self, "選択なし", "削除する取引先を選択してください。")
+                return
 
-        name_item = self.client_table.item(current_row, 0)
-        if name_item:
-            client_id = name_item.data(0x0100)
-            client_name = name_item.text()
+            name_item = self.client_table.item(current_row, 0)
+            if name_item:
+                client_id = name_item.data(0x0100)
+                client_name = name_item.text()
 
-            reply = QMessageBox.question(self, "確認", f"取引先「{client_name}」を削除しますか？",
-                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                reply = QMessageBox.question(self, "確認", f"取引先「{client_name}」を削除しますか？",
+                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
 
-            if reply == QMessageBox.StandardButton.Yes:
-                if self.client_manager.delete_client(client_id):
-                    QMessageBox.information(self, "成功", "取引先を削除しました。")
-                    self.load_clients()
-                else:
-                    QMessageBox.critical(self, "エラー", "取引先の削除に失敗しました。")
+                if reply == QMessageBox.StandardButton.Yes:
+                    if self.client_manager.delete_client(client_id):
+                        QMessageBox.information(self, "成功", "取引先を削除しました。")
+                        self.load_clients()
+                    else:
+                        QMessageBox.critical(self, "エラー", "取引先の削除に失敗しました。")
+        except RuntimeError as e:
+            QMessageBox.critical(self, "エラー", str(e))
 
     def _apply_styles(self):
         """UIスタイルを適用"""
@@ -421,6 +498,8 @@ class SettingsDialog(QDialog):
         apply_button_style(self.cancel_button)
 
         # 参照ボタン
+        apply_small_button_style(self.shared_config_path_button)
+        apply_small_button_style(self.clear_shared_config_button)
         apply_small_button_style(self.root_dir_button)
         apply_small_button_style(self.browse_tesseract_button)
 
