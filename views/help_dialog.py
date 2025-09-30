@@ -1,11 +1,26 @@
 from PyQt6.QtWidgets import QMessageBox
+import sys
+import os
+
+# バージョン情報を取得
+def get_version_info():
+    try:
+        # main.pyからバージョン情報をインポート
+        sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+        from main import APP_VERSION, APP_BUILD_DATE
+        return APP_VERSION, APP_BUILD_DATE
+    except ImportError:
+        return "v1.2.0", "2025-09-30"
 
 def show_help_dialog(parent=None):
     """
     Displays the help dialog for the application.
     """
+    version, build_date = get_version_info()
     help_message = (
-        "電子帳簿保存システム ヘルプ\n\n"
+        f"電子帳簿保存システム ヘルプ\n"
+        f"バージョン: {version}\n"
+        f"ビルド日: {build_date}\n\n"
         "このアプリケーションは、電子帳簿保存法に対応した電子取引データの管理を支援します。\n\n"
         "【ファイル登録モード】\n"
         "PDFファイルを登録し、ファイル名を自動生成します。\n"

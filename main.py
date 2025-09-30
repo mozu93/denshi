@@ -5,6 +5,10 @@ from PyQt6.QtGui import QFont
 from main_window import MainWindow
 from utils.ui_styles import apply_app_style
 
+# アプリケーションバージョン情報
+APP_VERSION = "v1.2.0"
+APP_BUILD_DATE = "2025-09-30"
+
 SHARED_CONFIG_FILENAME = 'shared_config.path'
 
 def get_base_path():
