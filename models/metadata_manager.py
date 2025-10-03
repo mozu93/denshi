@@ -220,7 +220,7 @@ class MetadataManager:
                     return True, result.iloc[0].to_dict(), year
         return False, None, None
 
-    def search_entries(self, year_nendo, doc_type=None, client_name=None, date_from=None, date_to=None, amount_from=None, amount_to=None, memo=None):
+    def search_entries(self, year_nendo, transaction_category=None, doc_type=None, other_org_subfolder=None, client_name=None, date_from=None, date_to=None, amount_from=None, amount_to=None, memo=None):
         logging.debug(f"search_entries - 開始 year_nendo={year_nendo}")
         df = self.load_df(year_nendo)
         if df.empty:
@@ -230,12 +230,22 @@ class MetadataManager:
         df['issue_date'] = pd.to_numeric(df['issue_date'].astype(str), errors='coerce')
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
 
+        # 取引区分でフィルタ
+        if transaction_category:
+            df = df[df['category'] == transaction_category]
+
+        # その他団体の場合、サブフォルダでフィルタ
+        if other_org_subfolder:
+            # file_pathから該当するサブフォルダを含む行のみ抽出
+            df = df[df['file_path'].str.contains(other_org_subfolder, na=False)]
+
+        # 書類種別でフィルタ（その他団体以外の場合）
         if doc_type and doc_type != "すべて":
             df = df[df['doc_type'] == doc_type]
-        
+
         if client_name:
             df = df[df['client_name'].str.contains(client_name, na=False)]
-            
+
         if memo:
             df = df[df['memo'].str.contains(memo, na=False)]
 
@@ -260,7 +270,7 @@ class MetadataManager:
                 df = df[df['amount'].notna() & (df['amount'] <= amount_to_int)]
             except (ValueError, TypeError):
                 pass
-                
+
         return df
 
     def get_entry_by_id(self, year_nendo, record_id):

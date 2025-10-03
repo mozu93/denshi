@@ -74,7 +74,19 @@ class FileSearchTab(QWidget):
         year_layout.addWidget(self.year_combo, 1)
         year_layout.addWidget(self.reload_year_button)
 
+        # 取引区分
+        self.transaction_category_combo = QComboBox()
+        self.transaction_category_combo.addItem("すべて")
+        self.transaction_category_combo.addItem("支出情報")
+        self.transaction_category_combo.addItem("収入情報")
+        self.transaction_category_combo.addItem("その他団体")
+        self.transaction_category_combo.currentTextChanged.connect(self._on_transaction_category_changed)
+
         self.doc_type_combo = QComboBox()
+
+        # その他団体のサブフォルダ選択
+        self.other_org_subfolder_combo = QComboBox()
+        self.other_org_subfolder_combo.setVisible(False)  # 初期は非表示
         self.client_name_edit = QLineEdit()
         self.date_from_edit = QDateEdit(calendarPopup=True)
         self.date_from_edit.setSpecialValueText("指定なし")  # 空欄表示用
@@ -115,7 +127,9 @@ class FileSearchTab(QWidget):
         form_layout.setVerticalSpacing(8)  # 行間を狭くする
         form_layout.setContentsMargins(0, 0, 0, 0)
         form_layout.addRow("年:", year_layout)
+        form_layout.addRow("取引区分:", self.transaction_category_combo)
         form_layout.addRow("書類種別:", self.doc_type_combo)
+        form_layout.addRow("サブフォルダ:", self.other_org_subfolder_combo)
         form_layout.addRow("取引先名:", self.client_name_edit)
         form_layout.addRow("発行日:", date_layout)
         form_layout.addRow("金額:", amount_layout)
@@ -162,15 +176,55 @@ class FileSearchTab(QWidget):
             self._reset_date_fields()
 
     def _populate_doc_type_combo(self):
+        """取引区分に基づいて書類種別を更新"""
         self.doc_type_combo.clear()
         self.doc_type_combo.addItem("すべて")
-        
-        expenditure_types = self.config_manager.get_section('FolderNames_Expenditure').values()
-        income_types = self.config_manager.get_section('FolderNames_Income').values()
-        
-        all_types = sorted(list(set(list(expenditure_types) + list(income_types))))
-        
-        self.doc_type_combo.addItems(all_types)
+
+        transaction_category = self.transaction_category_combo.currentText()
+
+        if transaction_category == "すべて":
+            expenditure_types = self.config_manager.get_section('FolderNames_Expenditure').values()
+            income_types = self.config_manager.get_section('FolderNames_Income').values()
+            all_types = sorted(list(set(list(expenditure_types) + list(income_types))))
+            self.doc_type_combo.addItems(all_types)
+        elif transaction_category == "支出情報":
+            expenditure_types = self.config_manager.get_section('FolderNames_Expenditure').values()
+            self.doc_type_combo.addItems(sorted(list(expenditure_types)))
+        elif transaction_category == "収入情報":
+            income_types = self.config_manager.get_section('FolderNames_Income').values()
+            self.doc_type_combo.addItems(sorted(list(income_types)))
+        elif transaction_category == "その他団体":
+            # その他団体の場合は書類種別は表示しない
+            self.doc_type_combo.setVisible(False)
+        else:
+            # デフォルトは全て表示
+            expenditure_types = self.config_manager.get_section('FolderNames_Expenditure').values()
+            income_types = self.config_manager.get_section('FolderNames_Income').values()
+            all_types = sorted(list(set(list(expenditure_types) + list(income_types))))
+            self.doc_type_combo.addItems(all_types)
+
+    def _populate_other_org_subfolder_combo(self):
+        """その他団体のサブフォルダを読み込む"""
+        self.other_org_subfolder_combo.clear()
+        self.other_org_subfolder_combo.addItem("すべて")
+
+        other_org_section = self.config_manager.get_section('FolderNames_OtherOrganization')
+        if other_org_section:
+            subfolders = sorted(list(other_org_section.values()))
+            self.other_org_subfolder_combo.addItems(subfolders)
+
+    def _on_transaction_category_changed(self, category):
+        """取引区分が変更された時の処理"""
+        if category == "その他団体":
+            # その他団体の場合、書類種別を非表示にしてサブフォルダを表示
+            self.doc_type_combo.setVisible(False)
+            self.other_org_subfolder_combo.setVisible(True)
+            self._populate_other_org_subfolder_combo()
+        else:
+            # それ以外の場合、書類種別を表示してサブフォルダを非表示
+            self.doc_type_combo.setVisible(True)
+            self.other_org_subfolder_combo.setVisible(False)
+            self._populate_doc_type_combo()
 
     def _create_results_group(self):
         """Creates the search results group box."""
@@ -240,9 +294,25 @@ class FileSearchTab(QWidget):
         date_from = None if (current_from_date <= QDate(1900, 1, 1) or is_year_start_from) else current_from_date
         date_to = None if (current_to_date <= QDate(1900, 1, 1) or is_year_start_to) else current_to_date
 
+        # 取引区分とサブフォルダの処理
+        transaction_category = self.transaction_category_combo.currentText()
+        doc_type = None
+        other_org_subfolder = None
+
+        if transaction_category == "その他団体":
+            # その他団体の場合はサブフォルダを検索条件に追加
+            subfolder = self.other_org_subfolder_combo.currentText()
+            if subfolder and subfolder != "すべて":
+                other_org_subfolder = subfolder
+        else:
+            # それ以外は書類種別を使用
+            doc_type = self.doc_type_combo.currentText()
+
         criteria = {
             "year_nendo": year_nendo,
-            "doc_type": self.doc_type_combo.currentText(),
+            "transaction_category": transaction_category if transaction_category != "すべて" else None,
+            "doc_type": doc_type,
+            "other_org_subfolder": other_org_subfolder,
             "client_name": self.client_name_edit.text(),
             "date_from": date_from,
             "date_to": date_to,
@@ -412,7 +482,9 @@ class FileSearchTab(QWidget):
 
     def _clear_search_fields(self):
         self.year_combo.setCurrentIndex(0)
+        self.transaction_category_combo.setCurrentIndex(0)
         self.doc_type_combo.setCurrentIndex(0)
+        self.other_org_subfolder_combo.setCurrentIndex(0)
         self.client_name_edit.clear()
         self.date_from_edit.setDate(QDate(1900, 1, 1))  # 最小日付に設定（「指定なし」表示）
         self.date_to_edit.setDate(QDate(1900, 1, 1))    # 最小日付に設定（「指定なし」表示）

@@ -370,7 +370,10 @@ class FileRegistrationTab(QWidget):
                 return
 
         was_empty = self.file_list_widget.count() == 0
-        self.file_list_widget.addItem(file_path)
+        from PyQt6.QtWidgets import QListWidgetItem
+        item = QListWidgetItem(file_path)
+        item.setData(Qt.ItemDataRole.UserRole, file_path)
+        self.file_list_widget.addItem(item)
 
         if was_empty:
             self.file_list_widget.setCurrentRow(0)
