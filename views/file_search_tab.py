@@ -135,8 +135,6 @@ class FileSearchTab(QWidget):
         form_layout.addRow("金額:", amount_layout)
         form_layout.addRow("メモ:", self.memo_edit)
 
-        layout.addLayout(form_layout)
-
         # Buttonsをメモの直下に配置（スペースを完全に削除）
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)  # 全てのマージンを削除
@@ -153,7 +151,9 @@ class FileSearchTab(QWidget):
         button_layout.addWidget(self.clear_button)
         button_layout.addStretch()  # 右側にスペースを追加
 
-        layout.addLayout(button_layout)
+        form_layout.addRow(button_layout)
+
+        layout.addLayout(form_layout)
 
         # コンテナに追加
         container_layout.addWidget(form_widget)
@@ -234,10 +234,10 @@ class FileSearchTab(QWidget):
         self.results_table = QTableWidget()
         # テーブルの最小高さを削除して、より多くの行を表示
         # self.results_table.setMinimumHeight(150)  # コメントアウト
-        self.results_table.setColumnCount(9)
+        self.results_table.setColumnCount(10)
         self.results_table.setHorizontalHeaderLabels([
             "ID", "通し番号", "発行日", "金額(税込)", "取引先名",
-            "書類種別", "メモ", "", ""
+            "取引区分", "書類種別", "メモ", "", ""
         ])
         self.results_table.setColumnHidden(0, True) # Hide ID column
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers) # Make table read-only
@@ -255,8 +255,8 @@ class FileSearchTab(QWidget):
         # オートフィット設定 - 内容に合わせて列幅を自動調整
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 
-        # メモ列（列6）のみストレッチモードで残りスペースを使用
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        # メモ列（列7）のみストレッチモードで残りスペースを使用
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
 
         self.results_table.setWordWrap(True)
 
@@ -354,20 +354,20 @@ class FileSearchTab(QWidget):
             self.results_table.setItem(row_position, 2, QTableWidgetItem(str(row.get('issue_date', ''))))
             self.results_table.setItem(row_position, 3, QTableWidgetItem(str(row.get('amount', ''))))
             self.results_table.setItem(row_position, 4, QTableWidgetItem(str(row.get('client_name', ''))))
-            self.results_table.setItem(row_position, 5, QTableWidgetItem(str(row.get('doc_type', ''))))
-            self.results_table.setItem(row_position, 6, QTableWidgetItem(str(row.get('memo', ''))))
+            self.results_table.setItem(row_position, 5, QTableWidgetItem(str(row.get('category', ''))))
+            self.results_table.setItem(row_position, 6, QTableWidgetItem(str(row.get('doc_type', ''))))
+            self.results_table.setItem(row_position, 7, QTableWidgetItem(str(row.get('memo', ''))))
 
             # Add buttons
-            record_id = row.get('id')
             edit_btn = QPushButton(QIcon.fromTheme("document-edit"), "編集")
-            edit_btn.clicked.connect(partial(self._edit_row, record_id))
+            edit_btn.clicked.connect(self._handle_edit_button_click)
             apply_button_style(edit_btn)
-            self.results_table.setCellWidget(row_position, 7, edit_btn)
+            self.results_table.setCellWidget(row_position, 8, edit_btn)
 
             delete_btn = QPushButton(QIcon.fromTheme("edit-delete"), "削除")
-            delete_btn.clicked.connect(partial(self._delete_row, record_id))
+            delete_btn.clicked.connect(self._handle_delete_button_click)
             apply_button_style(delete_btn)
-            self.results_table.setCellWidget(row_position, 8, delete_btn)
+            self.results_table.setCellWidget(row_position, 9, delete_btn)
 
     def _open_pdf(self, row, column):
         record_id_item = self.results_table.item(row, 0)
@@ -404,6 +404,28 @@ class FileSearchTab(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "起動エラー", f"ファイルを開けませんでした。\n{e}")
 
+    def _handle_edit_button_click(self):
+        button = self.sender()
+        if button:
+            index = self.results_table.indexAt(button.pos())
+            if index.isValid():
+                row = index.row()
+                record_id_item = self.results_table.item(row, 0)
+                if record_id_item:
+                    record_id = record_id_item.text()
+                    self._edit_row(record_id)
+
+    def _handle_delete_button_click(self):
+        button = self.sender()
+        if button:
+            index = self.results_table.indexAt(button.pos())
+            if index.isValid():
+                row = index.row()
+                record_id_item = self.results_table.item(row, 0)
+                if record_id_item:
+                    record_id = record_id_item.text()
+                    self._delete_row(record_id)
+
     def _edit_row(self, record_id):
         if not record_id:
             return
@@ -420,7 +442,7 @@ class FileSearchTab(QWidget):
             return
 
         # Open dialog
-        dialog = EditDialog(current_data, self)
+        dialog = EditDialog(current_data, year_nendo, self.config_manager, self.metadata_manager, self)
         if dialog.exec():
             new_data = dialog.get_updated_data()
             
@@ -433,11 +455,16 @@ class FileSearchTab(QWidget):
             if not is_valid_amount:
                 QMessageBox.warning(self, "入力エラー", "金額の形式が正しくありません。")
                 return
-            new_data['amount'] = amount_val # Use the normalized integer value
+            # Use the normalized integer value, but keep other data as is for the manager
+            new_data['amount'] = amount_val
 
             # Update data
             try:
-                success = self.metadata_manager.update_entry(year_nendo, record_id, new_data)
+                success = self.metadata_manager.update_entry(
+                    original_year=year_nendo, 
+                    record_id=record_id, 
+                    new_data=new_data
+                )
                 if success:
                     QMessageBox.information(self, "成功", "レコードを更新しました。")
                     self._search_files() # Refresh table

@@ -8,6 +8,8 @@ The application allows users to register PDF files with associated metadata such
 
 A key feature is its OCR capability, which extracts information directly from the PDF documents to streamline the data entry process. The application also provides functionality to search and manage the registered documents.
 
+Furthermore, the application offers robust editing capabilities from the search tab. Users can not only modify a document's metadata (such as client name or amount) but also change its location. By selecting a new year, transaction category, or document type within the edit dialog, the application will automatically move the physical PDF file to the correct directory and update the corresponding `index.csv` file, ensuring data integrity across the entire system, even for cross-year moves.
+
 ## Building and Running
 
 ### Dependencies
