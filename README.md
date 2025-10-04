@@ -79,11 +79,26 @@ python main.py
 
 ### 4. 実行可能ファイルの作成 (Windows)
 
-PyInstallerを使用して、アプリケーションを単一の実行可能ファイルにパッケージ化できます。
+PyInstallerを使用して、アプリケーションを実行可能ファイルにパッケージ化できます。
+
+#### ワンフォルダ形式（推奨）
+
+実行に必要なファイルがすべて一つのフォルダにまとめられます。起動が速いのが特徴です。
 
 ```bash
-pyinstaller --noconsole --onefile --add-data "config.ini;. " --add-data "電子帳簿保存;電子帳簿保存" main.py
+pyinstaller --noconsole --add-data "config.ini;." main.py
 ```
+
+作成された配布用フォルダは `dist\main` にあります。
+
+#### ワンファイル形式
+
+単一の実行可能ファイル（`.exe`）を生成します。配布は容易ですが、起動に少し時間がかかることがあります。
+
+```bash
+pyinstaller --noconsole --onefile --add-data "config.ini;." main.py
+```
+
 生成された `main.exe` は `dist` フォルダ内にあります。
 
 ## 画面構成
