@@ -10,6 +10,10 @@ from PyQt6.QtCore import QTimer
 from views.settings_dialog import SettingsDialog
 from views.help_dialog import show_help_dialog
 from views.startup_guide_dialog import show_startup_guide
+import os
+
+# ハードコードされたルート保存ディレクトリ
+HARDCODED_ROOT_SAVE_DIRECTORY = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存"
 
 class MainWindow(QMainWindow):
     def __init__(self, config_file, parent=None):
@@ -33,15 +37,15 @@ class MainWindow(QMainWindow):
         # フォントサイズの復元
         font_size = self.config_manager.get_ui_font_size()
         self.apply_font_size(font_size)
-        root_save_directory = self.config_manager.get('Paths', 'root_save_directory', fallback='')
 
-        # 空文字列の場合はデフォルトパスを使用
-        if not root_save_directory:
-            import os
-            root_save_directory = os.path.join(os.getcwd(), '電子帳簿保存')
-            self.config_manager.set('Paths', 'root_save_directory', root_save_directory)
+        # ハードコードされたルート保存ディレクトリを使用
+        root_save_directory = HARDCODED_ROOT_SAVE_DIRECTORY
+        self.config_manager.set('Paths', 'root_save_directory', root_save_directory)
 
         self.metadata_manager = MetadataManager(root_save_directory)
+
+        # 起動時に通し番号を再計算
+        self.metadata_manager.recalculate_all_doc_ids()
 
         self.registration_tab = FileRegistrationTab(config_manager=self.config_manager, metadata_manager=self.metadata_manager)
         self.search_tab = FileSearchTab(config_manager=self.config_manager, metadata_manager=self.metadata_manager)

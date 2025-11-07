@@ -9,6 +9,10 @@ from utils.ui_styles import apply_app_style
 APP_VERSION = "v1.2.0"
 APP_BUILD_DATE = "2025-09-30"
 
+# ハードコードされたパス設定
+HARDCODED_ROOT_SAVE_DIRECTORY = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存"
+HARDCODED_SHARED_CONFIG_PATH = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存\config.ini"
+
 SHARED_CONFIG_FILENAME = 'shared_config.path'
 
 def get_base_path():
@@ -27,6 +31,11 @@ def get_base_path():
 
 def get_config_path(base_path):
     """Get the path to the config file, checking for a shared config override."""
+    # ハードコードされた共有設定ファイルパスを優先的に使用
+    if os.path.exists(HARDCODED_SHARED_CONFIG_PATH):
+        print(f"ハードコードされた共有設定ファイルを読み込みます: {HARDCODED_SHARED_CONFIG_PATH}")
+        return HARDCODED_SHARED_CONFIG_PATH
+
     shared_config_path_file = os.path.join(base_path, SHARED_CONFIG_FILENAME)
     if os.path.exists(shared_config_path_file):
         try:

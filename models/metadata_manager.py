@@ -104,7 +104,7 @@ class MetadataManager:
             return "001"
 
         target_dir = os.path.join(self.root_path, year_nendo, transaction_type, doc_type)
-        
+
         try:
             if not os.path.exists(target_dir):
                 return "001"
@@ -122,6 +122,66 @@ class MetadataManager:
         except OSError as e:
             logging.error(f"ディレクトリの読み取りに失敗しました: {target_dir}, エラー: {e}")
             return "001"
+
+    def recalculate_all_doc_ids(self):
+        """起動時に全ドキュメントの通し番号を再計算する。"""
+        logging.info("全ドキュメントの通し番号再計算を開始します。")
+
+        try:
+            if not os.path.exists(self.root_path):
+                logging.warning(f"ルートパスが存在しません: {self.root_path}")
+                return
+
+            # 年度ディレクトリをスキャン
+            for year_nendo_dir in os.listdir(self.root_path):
+                year_path = os.path.join(self.root_path, year_nendo_dir)
+                if not os.path.isdir(year_path) or not re.match(r'^\d{4}年$', year_nendo_dir):
+                    continue
+
+                logging.debug(f"年度 {year_nendo_dir} の処理を開始。")
+
+                # 取引区分（支出情報/収入情報）をスキャン
+                for category_dir in os.listdir(year_path):
+                    category_path = os.path.join(year_path, category_dir)
+                    if not os.path.isdir(category_path):
+                        continue
+
+                    # 書類種別ディレクトリをスキャン
+                    for doc_type_dir in os.listdir(category_path):
+                        doc_type_path = os.path.join(category_path, doc_type_dir)
+                        if not os.path.isdir(doc_type_path):
+                            continue
+
+                        # 各ディレクトリ内のファイルを取得
+                        files = []
+                        for filename in os.listdir(doc_type_path):
+                            if filename.lower().endswith('.pdf'):
+                                files.append(filename)
+
+                        # ファイルをソート（既存の通し番号でソート）
+                        files.sort(key=lambda x: int(re.match(r'(\d+)_', x).group(1)) if re.match(r'(\d+)_', x) else 0)
+
+                        # ファイルをリネーム
+                        for new_id, old_filename in enumerate(files, 1):
+                            old_path = os.path.join(doc_type_path, old_filename)
+                            parts = old_filename.replace('.pdf', '').split('_')
+
+                            if len(parts) >= 3:
+                                # 新しいIDで再構成（形式: {ID}_{日付}_{金額}_{取引先}.pdf）
+                                new_id_str = f"{new_id:03d}"
+                                new_filename = f"{new_id_str}_{'_'.join(parts[1:])}.pdf"
+                                new_path = os.path.join(doc_type_path, new_filename)
+
+                                if old_path != new_path:
+                                    try:
+                                        os.rename(old_path, new_path)
+                                        logging.debug(f"リネーム: {old_filename} → {new_filename}")
+                                    except OSError as e:
+                                        logging.error(f"ファイルのリネームに失敗しました: {old_path} → {new_path}, エラー: {e}")
+
+            logging.info("全ドキュメントの通し番号再計算が完了しました。")
+        except Exception as e:
+            logging.error(f"通し番号再計算処理でエラーが発生しました: {e}")
 
     def rebuild_index(self):
         """Scans all managed directories, parses filenames, and overwrites the index.csv for each year."""
