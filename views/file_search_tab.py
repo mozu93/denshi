@@ -234,10 +234,10 @@ class FileSearchTab(QWidget):
         self.results_table = QTableWidget()
         # テーブルの最小高さを削除して、より多くの行を表示
         # self.results_table.setMinimumHeight(150)  # コメントアウト
-        self.results_table.setColumnCount(9)
+        self.results_table.setColumnCount(8)
         self.results_table.setHorizontalHeaderLabels([
             "ID", "通し番号", "発行日", "金額(税込)", "取引先名",
-            "書類種別", "メモ", "", ""
+            "書類種別", "メモ", ""
         ])
         self.results_table.setColumnHidden(0, True) # Hide ID column
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers) # Make table read-only
@@ -363,11 +363,6 @@ class FileSearchTab(QWidget):
             edit_btn.clicked.connect(partial(self._edit_row, record_id))
             apply_button_style(edit_btn)
             self.results_table.setCellWidget(row_position, 7, edit_btn)
-
-            delete_btn = QPushButton(QIcon.fromTheme("edit-delete"), "削除")
-            delete_btn.clicked.connect(partial(self._delete_row, record_id))
-            apply_button_style(delete_btn)
-            self.results_table.setCellWidget(row_position, 8, delete_btn)
 
     def _open_pdf(self, row, column):
         record_id_item = self.results_table.item(row, 0)
