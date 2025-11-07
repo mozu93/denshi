@@ -184,11 +184,27 @@ class MetadataManager:
             logging.error(f"通し番号再計算処理でエラーが発生しました: {e}")
 
     def rebuild_index(self):
-        """Scans all managed directories, parses filenames, and overwrites the index.csv for each year."""
+        """Scans all managed directories, parses filenames, and overwrites the index.csv for each year.
+        Preserves memo data from existing index.csv if available."""
         for year_nendo_dir in os.listdir(self.root_path):
             year_path = os.path.join(self.root_path, year_nendo_dir)
             if not os.path.isdir(year_path) or not re.match(r'^\d{4}年$', year_nendo_dir):
                 continue
+
+            # 既存のインデックスからメモデータを読み込む
+            old_memo_map = {}
+            try:
+                old_df = self.load_df(year_nendo_dir)
+                if not old_df.empty and 'memo' in old_df.columns:
+                    # {category}/{doc_type}/{doc_id}_{issue_date}_{amount}_{client_name}.pdf キーでメモを保存
+                    for _, row in old_df.iterrows():
+                        file_path = row.get('file_path', '')
+                        memo = row.get('memo', '')
+                        if file_path and memo:
+                            old_memo_map[file_path] = memo
+                logging.debug(f"Loaded {len(old_memo_map)} memos from existing index for {year_nendo_dir}")
+            except Exception as e:
+                logging.warning(f"Could not load existing memos: {e}")
 
             current_year_metadata = []
             for category_dir in os.listdir(year_path):
@@ -211,8 +227,14 @@ class MetadataManager:
                             continue
 
                         doc_id, issue_date, amount, client_name = parts
-                        
+
                         try:
+                            # 相対パスを計算
+                            relative_path = os.path.relpath(file_path, year_path)
+
+                            # 既存のメモを取得（キーは相対パス）
+                            memo = old_memo_map.get(relative_path, '')
+
                             metadata = {
                                 'id': str(uuid.uuid4()),
                                 'doc_id': doc_id,
@@ -221,18 +243,19 @@ class MetadataManager:
                                 'issue_date': issue_date,
                                 'client_name': client_name,
                                 'amount': int(amount),
-                                'memo': '', # Memos are lost on rebuild as per spec
-                                'file_path': os.path.relpath(file_path, year_path),
+                                'memo': memo,  # 既存のメモを保持
+                                'file_path': relative_path,
                                 'created_at': datetime.now().isoformat(),
                                 'updated_at': datetime.now().isoformat()
                             }
                             current_year_metadata.append(metadata)
                         except (ValueError, TypeError):
-                            print(f"Skipping file with invalid amount: {filename}")
+                            logging.warning(f"Skipping file with invalid amount: {filename}")
                             continue
-            
+
             df = pd.DataFrame(current_year_metadata)
             self.save_df(year_nendo_dir, df)
+            logging.info(f"Rebuilt index for {year_nendo_dir} with {len(current_year_metadata)} records, preserved {len([m for m in current_year_metadata if m['memo']])} memos")
 
     def has_files_for_doc_type(self, transaction_type, doc_type):
         for year_nendo_dir in os.listdir(self.root_path):
