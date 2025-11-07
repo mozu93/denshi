@@ -3,6 +3,7 @@ import os
 import uuid
 import re
 import logging
+import shutil
 from datetime import datetime
 
 class MetadataManager:
@@ -33,10 +34,9 @@ class MetadataManager:
             return pd.DataFrame(columns=self.columns)
 
         try:
-            # CSVファイルの読み込み
-            # - ファイル破損によるパースエラー(ParserError)が発生する可能性がある
-            # - メモリ不足エラーなど、予期せぬ例外が発生する可能性もある
-            df = pd.read_csv(csv_path)
+            # Define all columns as string type to avoid dtype issues
+            dtype_map = {col: str for col in self.columns}
+            df = pd.read_csv(csv_path, dtype=dtype_map)
             logging.debug(f"load_df - CSVを読み込み成功: {len(df)} 行")
             # カラムの検証: 必須カラムが存在するか確認
             required_columns = ['id', 'doc_id', 'category', 'doc_type', 'issue_date', 'client_name', 'amount', 'memo', 'file_path']
@@ -386,25 +386,114 @@ class MetadataManager:
         self.save_df(year_nendo, df)
         return file_path
 
-    def update_entry(self, year_nendo, record_id, new_data):
-        df = self.load_df(year_nendo)
-        if df.empty:
+    def update_entry(self, original_year, record_id, new_data):
+        # 1. Load original data
+        df_original = self.load_df(original_year)
+        if df_original.empty:
             return False
 
-        df['id'] = df['id'].astype(str)
+        df_original['id'] = df_original['id'].astype(str)
         record_id = str(record_id)
-
-        record_index = df.index[df['id'] == record_id].tolist()
-        if not record_index:
+        
+        original_record_list = df_original.index[df_original['id'] == record_id].tolist()
+        if not original_record_list:
             return False
-        
-        index = record_index[0]
+        original_index = original_record_list[0]
+        original_record = df_original.loc[original_index].to_dict()
 
-        for key, value in new_data.items():
-            if key in df.columns:
-                df.loc[index, key] = value
-        
-        df.loc[index, 'updated_at'] = datetime.now().isoformat()
+        # 2. Extract destination info and determine changes
+        dest_year = new_data.get('destination_year')
+        dest_category = new_data.get('destination_category')
+        dest_doc_type = new_data.get('destination_doc_type')
 
-        self.save_df(year_nendo, df)
-        return True
+        is_year_changed = dest_year != original_year
+        is_category_changed = dest_category != original_record.get('category')
+        is_doc_type_changed = dest_doc_type != original_record.get('doc_type')
+        is_location_changed = is_year_changed or is_category_changed or is_doc_type_changed
+
+        is_rename_needed = (
+            str(new_data.get('issue_date')) != str(original_record.get('issue_date')) or
+            str(new_data.get('amount')) != str(original_record.get('amount')) or
+            new_data.get('client_name') != original_record.get('client_name')
+        )
+        
+        requires_file_operation = is_location_changed or is_rename_needed
+
+        # --- Phase 1: File System Operation ---
+        old_full_path = os.path.normpath(os.path.join(self.root_path, original_year, original_record['file_path']))
+        new_full_path = None
+        # This dictionary will be populated with the results of the file op
+        file_op_results = {}
+
+        if requires_file_operation:
+            try:
+                doc_id = original_record.get('doc_id')
+                if is_location_changed:
+                    doc_id = self.get_next_doc_id(dest_year, dest_category, dest_doc_type)
+                
+                new_filename = f"{doc_id}_{new_data['issue_date']}_{new_data['amount']}_{new_data['client_name']}.pdf"
+                new_relative_path = os.path.join(dest_category, dest_doc_type, new_filename)
+                new_full_path = os.path.join(self.root_path, dest_year, new_relative_path)
+
+                if os.path.exists(old_full_path):
+                    dest_dir = os.path.dirname(new_full_path)
+                    os.makedirs(dest_dir, exist_ok=True)
+                    shutil.move(old_full_path, new_full_path)
+                
+                # Store results for Phase 2
+                file_op_results['file_path'] = new_relative_path
+                file_op_results['doc_id'] = doc_id
+
+            except Exception as e:
+                logging.error(f"CRITICAL: File operation failed for record {record_id}. Aborting before index update. Error: {e}")
+                return False
+
+        # --- Phase 2: Index (CSV) Operation ---
+        try:
+            # Prepare the final record data for saving.
+            final_record_data = original_record.copy()
+
+            # Update with metadata from the dialog
+            final_record_data['issue_date'] = new_data['issue_date']
+            final_record_data['amount'] = new_data['amount']
+            final_record_data['client_name'] = new_data['client_name']
+            final_record_data['memo'] = new_data['memo']
+            final_record_data['updated_at'] = datetime.now().isoformat()
+
+            # If file was moved/renamed, update location fields
+            if requires_file_operation:
+                final_record_data['category'] = dest_category
+                final_record_data['doc_type'] = dest_doc_type
+                final_record_data['file_path'] = file_op_results['file_path']
+                final_record_data['doc_id'] = file_op_results['doc_id']
+
+            if is_year_changed:
+                # Cross-year move: delete from old, add to new
+                df_original = df_original.drop(original_index)
+                self.save_df(original_year, df_original)
+
+                df_new = self.load_df(dest_year)
+                entry_to_add = {k: v for k, v in final_record_data.items() if k in self.columns}
+                new_entry_df = pd.DataFrame([entry_to_add])
+                df_updated = pd.concat([df_new, new_entry_df], ignore_index=True)
+                self.save_df(dest_year, df_updated)
+            else:
+                # Same-year move or metadata-only update
+                for key, value in final_record_data.items():
+                    if key in df_original.columns:
+                         df_original.loc[original_index, key] = value
+                self.save_df(original_year, df_original)
+            
+            return True
+
+        except Exception as e:
+            logging.critical(f"CRITICAL INCONSISTENCY: Index update failed for record {record_id} AFTER file was moved.")
+            logging.critical(f"Error: {e}")
+            if new_full_path and os.path.exists(new_full_path):
+                logging.info(f"Attempting to roll back by moving file from {new_full_path} to {old_full_path}")
+                try:
+                    shutil.move(new_full_path, old_full_path)
+                    logging.info(f"Rollback successful. File moved back to {old_full_path}")
+                except Exception as move_back_e:
+                    logging.critical(f"CRITICAL: ROLLBACK FAILED. Manual intervention required. File is at {new_full_path}, index is NOT updated. Error: {move_back_e}")
+            return False
