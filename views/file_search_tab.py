@@ -414,13 +414,25 @@ class FileSearchTab(QWidget):
             return
 
         # Get current data
-        current_data = self.metadata_manager.get_entry_by_id(year_nendo, record_id)
-        if not current_data:
-            QMessageBox.warning(self, "エラー", "編集対象のレコードが見つかりませんでした。")
+        try:
+            current_data = self.metadata_manager.get_entry_by_id(year_nendo, record_id)
+            if not current_data:
+                QMessageBox.warning(self, "エラー", "編集対象のレコードが見つかりませんでした。")
+                return
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"レコード取得に失敗しました。\n{e}")
             return
 
         # Open dialog
-        dialog = EditDialog(current_data, self)
+        try:
+            dialog = EditDialog(current_data, self)
+        except ValueError as e:
+            QMessageBox.critical(self, "エラー", f"編集ダイアログの初期化に失敗しました。\n{e}")
+            return
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"予期しないエラーが発生しました。\n{e}")
+            return
+
         if dialog.exec():
             new_data = dialog.get_updated_data()
             
