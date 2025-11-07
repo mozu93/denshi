@@ -6,8 +6,8 @@ from main_window import MainWindow
 from utils.ui_styles import apply_app_style
 
 # アプリケーションバージョン情報
-APP_VERSION = "v1.2.0"
-APP_BUILD_DATE = "2025-09-30"
+APP_VERSION = "v2.0.0"
+APP_BUILD_DATE = "2025-11-07"
 
 # ハードコードされたパス設定
 HARDCODED_ROOT_SAVE_DIRECTORY = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存"
