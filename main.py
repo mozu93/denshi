@@ -1,17 +1,17 @@
 import sys
 import os
+import logging
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFont
 from main_window import MainWindow
 from utils.ui_styles import apply_app_style
+from utils.constants import HARDCODED_ROOT_SAVE_DIRECTORY, HARDCODED_SHARED_CONFIG_PATH
+
+logger = logging.getLogger(__name__)
 
 # アプリケーションバージョン情報
 APP_VERSION = "v2.0.0"
 APP_BUILD_DATE = "2025-11-07"
-
-# ハードコードされたパス設定
-HARDCODED_ROOT_SAVE_DIRECTORY = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存"
-HARDCODED_SHARED_CONFIG_PATH = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存\config.ini"
 
 SHARED_CONFIG_FILENAME = 'shared_config.path'
 
@@ -33,7 +33,7 @@ def get_config_path(base_path):
     """Get the path to the config file, checking for a shared config override."""
     # ハードコードされた共有設定ファイルパスを優先的に使用
     if os.path.exists(HARDCODED_SHARED_CONFIG_PATH):
-        print(f"ハードコードされた共有設定ファイルを読み込みます: {HARDCODED_SHARED_CONFIG_PATH}")
+        logger.info(f"ハードコードされた共有設定ファイルを読み込みます: {HARDCODED_SHARED_CONFIG_PATH}")
         return HARDCODED_SHARED_CONFIG_PATH
 
     shared_config_path_file = os.path.join(base_path, SHARED_CONFIG_FILENAME)
@@ -42,19 +42,24 @@ def get_config_path(base_path):
             with open(shared_config_path_file, 'r', encoding='utf-8') as f:
                 shared_path = f.read().strip()
                 if os.path.exists(shared_path):
-                    print(f"共有設定ファイルを読み込みます: {shared_path}")
+                    logger.info(f"共有設定ファイルを読み込みます: {shared_path}")
                     return shared_path
                 else:
-                    print(f"警告: 共有設定ファイルが見つかりません: {shared_path}")
+                    logger.warning(f"共有設定ファイルが見つかりません: {shared_path}")
         except Exception as e:
-            print(f"エラー: 共有設定ファイルの読み込みに失敗しました: {e}")
+            logger.error(f"共有設定ファイルの読み込みに失敗しました: {e}")
 
     # Fallback to local config file
     local_config_path = os.path.join(base_path, 'config.ini')
-    print(f"ローカル設定ファイルを読み込みます: {local_config_path}")
+    logger.info(f"ローカル設定ファイルを読み込みます: {local_config_path}")
     return local_config_path
 
 def main():
+    logging.basicConfig(
+        level=logging.WARNING,
+        format='%(asctime)s [%(name)s] %(levelname)s - %(message)s'
+    )
+
     app = QApplication(sys.argv)
 
     # 作業ディレクトリをスクリプトの場所に変更（ダブルクリック起動対応）

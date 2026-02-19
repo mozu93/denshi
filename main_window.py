@@ -1,25 +1,26 @@
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QMenuBar, QMessageBox, QToolBar
 from PyQt6.QtGui import QIcon, QAction, QFont
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QTimer
 from views.file_registration_tab import FileRegistrationTab
 from views.file_search_tab import FileSearchTab
 from utils.config_manager import ConfigManager
 from models.metadata_manager import MetadataManager
 from models.ocr_processor import OcrProcessor
-from PyQt6.QtCore import QTimer
 from views.settings_dialog import SettingsDialog
 from views.help_dialog import show_help_dialog
 from views.startup_guide_dialog import show_startup_guide
+from utils.constants import (
+    HARDCODED_ROOT_SAVE_DIRECTORY,
+    DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE
+)
 import os
-
-# ハードコードされたルート保存ディレクトリ
-HARDCODED_ROOT_SAVE_DIRECTORY = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存"
 
 class MainWindow(QMainWindow):
     def __init__(self, config_file, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setWindowTitle("電子帳簿保存システム")
+        self.test_mode = False
 
         central_widget = QWidget(self)
         central_widget.setAutoFillBackground(True)
@@ -85,6 +86,9 @@ class MainWindow(QMainWindow):
         self.zoom_out_font_action.triggered.connect(self.decrease_font_size)
         self.reset_font_action = QAction(QIcon.fromTheme("zoom-original"), "文字サイズリセット", self)
         self.reset_font_action.triggered.connect(self.reset_font_size)
+        self.test_mode_action = QAction("テストモード", self)
+        self.test_mode_action.setCheckable(True)
+        self.test_mode_action.triggered.connect(self._toggle_test_mode)
 
     def _create_menus(self):
         file_menu = self.menu_bar.addMenu("ファイル")
@@ -103,6 +107,8 @@ class MainWindow(QMainWindow):
 
         help_menu = self.menu_bar.addMenu("ヘルプ")
         help_menu.addAction(self.help_action)
+        help_menu.addSeparator()
+        help_menu.addAction(self.test_mode_action)
 
     def _create_toolbar(self):
         tool_bar = QToolBar("Main Toolbar")
@@ -116,22 +122,31 @@ class MainWindow(QMainWindow):
         tool_bar.addSeparator()
         tool_bar.addAction(self.help_action)
 
-    
-
     def rebuild_index(self):
-        reply = QMessageBox.question(self, 'インデックス再構築', 
+        reply = QMessageBox.question(self, 'インデックス再構築',
                                      '本当にインデックスを再構築しますか？既存のインデックスは上書きされます。',
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.metadata_manager.rebuild_index()
                 QMessageBox.information(self, "成功", "インデックスを再構築しました。")
             except Exception as e:
-                QMessageBox.information(self, "エラー", f"インデックスの再構築に失敗しました。\n{e}")
+                QMessageBox.critical(self, "エラー", f"インデックスの再構築に失敗しました。\n{e}")
+
+    def _toggle_test_mode(self, checked):
+        self.test_mode = checked
+        if checked:
+            self.setWindowTitle("電子帳簿保存システム [テストモード]")
+            self.status_bar.showMessage("テストモード: 共有設定・保存先設定のハードコードが解除されています")
+        else:
+            self.setWindowTitle("電子帳簿保存システム")
+            self.config_manager.set('Paths', 'root_save_directory', HARDCODED_ROOT_SAVE_DIRECTORY)
+            self.metadata_manager.update_root_directory(HARDCODED_ROOT_SAVE_DIRECTORY)
+            self.status_bar.showMessage("テストモード終了: ハードコード設定に戻りました")
 
     def open_settings(self):
-        dialog = SettingsDialog(self.config_manager, self.metadata_manager, self)
+        dialog = SettingsDialog(self.config_manager, self.metadata_manager, self, test_mode=self.test_mode)
         if dialog.exec():
             new_root_directory = dialog.new_root_dir
             if new_root_directory is not None:
@@ -175,22 +190,21 @@ class MainWindow(QMainWindow):
     def increase_font_size(self):
         """Increase the font size."""
         current_size = self.config_manager.get_ui_font_size()
-        new_size = min(current_size + 2, 24)  # 最大サイズ24
+        new_size = min(current_size + 2, MAX_FONT_SIZE)
         self.config_manager.set_ui_font_size(new_size)
         self.apply_font_size(new_size)
 
     def decrease_font_size(self):
         """Decrease the font size."""
         current_size = self.config_manager.get_ui_font_size()
-        new_size = max(current_size - 2, 8)  # 最小サイズ8
+        new_size = max(current_size - 2, MIN_FONT_SIZE)
         self.config_manager.set_ui_font_size(new_size)
         self.apply_font_size(new_size)
 
     def reset_font_size(self):
         """Reset the font size to default."""
-        default_size = 10
-        self.config_manager.set_ui_font_size(default_size)
-        self.apply_font_size(default_size)
+        self.config_manager.set_ui_font_size(DEFAULT_FONT_SIZE)
+        self.apply_font_size(DEFAULT_FONT_SIZE)
 
     def closeEvent(self, event):
         """Save window size and splitter positions before closing."""

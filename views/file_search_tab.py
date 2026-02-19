@@ -2,20 +2,26 @@ import send2trash
 import os
 import sys
 import subprocess
+import logging
+import traceback
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QGridLayout, QLabel,
     QComboBox, QDateEdit, QMessageBox, QSplitter, QHBoxLayout
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import QDate
 from functools import partial
 
-# Import the new dialog
 from views.edit_dialog import EditDialog
 from utils.validator import Validator
 from utils.ui_styles import apply_button_style, apply_table_style
+from utils.constants import (
+    CATEGORY_EXPENDITURE, CATEGORY_INCOME, CATEGORY_OTHER_ORG,
+    DATE_UNSPECIFIED_YEAR
+)
+
+logger = logging.getLogger(__name__)
 
 class FileSearchTab(QWidget):
     def __init__(self, config_manager, metadata_manager, parent=None):
@@ -23,7 +29,7 @@ class FileSearchTab(QWidget):
         self.config_manager = config_manager
         self.metadata_manager = metadata_manager
         self.validator = Validator()
-        
+
         main_layout = QVBoxLayout(self)
 
         # スプリッターで検索条件と結果を分割
@@ -42,7 +48,7 @@ class FileSearchTab(QWidget):
         if saved_sizes and len(saved_sizes) == 2:
             search_splitter.setSizes(saved_sizes)
         else:
-            search_splitter.setSizes([200, 500])  # 検索条件:200, 結果:500（適切なバランスに調整）
+            search_splitter.setSizes([200, 1000])  # 検索条件:200, 結果:1000（2倍に拡大）
 
         self.search_splitter = search_splitter
         main_layout.addWidget(search_splitter)
@@ -77,9 +83,9 @@ class FileSearchTab(QWidget):
         # 取引区分
         self.transaction_category_combo = QComboBox()
         self.transaction_category_combo.addItem("すべて")
-        self.transaction_category_combo.addItem("支出情報")
-        self.transaction_category_combo.addItem("収入情報")
-        self.transaction_category_combo.addItem("その他団体")
+        self.transaction_category_combo.addItem(CATEGORY_EXPENDITURE)
+        self.transaction_category_combo.addItem(CATEGORY_INCOME)
+        self.transaction_category_combo.addItem(CATEGORY_OTHER_ORG)
         self.transaction_category_combo.currentTextChanged.connect(self._on_transaction_category_changed)
 
         self.doc_type_combo = QComboBox()
@@ -90,14 +96,14 @@ class FileSearchTab(QWidget):
         self.client_name_edit = QLineEdit()
         self.date_from_edit = QDateEdit(calendarPopup=True)
         self.date_from_edit.setSpecialValueText("指定なし")  # 空欄表示用
-        self.date_from_edit.setMinimumDate(QDate(1900, 1, 1))  # 最小日付を設定
-        self.date_from_edit.setDate(QDate(1900, 1, 1))  # 最小日付に設定して「指定なし」を表示
+        self.date_from_edit.setMinimumDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
+        self.date_from_edit.setDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
         self.date_from_edit.dateChanged.connect(self._on_from_date_changed)
 
         self.date_to_edit = QDateEdit(calendarPopup=True)
         self.date_to_edit.setSpecialValueText("指定なし")  # 空欄表示用
-        self.date_to_edit.setMinimumDate(QDate(1900, 1, 1))  # 最小日付を設定
-        self.date_to_edit.setDate(QDate(1900, 1, 1))  # 最小日付に設定して「指定なし」を表示
+        self.date_to_edit.setMinimumDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
+        self.date_to_edit.setDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
         self.amount_from_edit = QLineEdit()
         self.amount_to_edit = QLineEdit()
         self.memo_edit = QLineEdit()
@@ -187,21 +193,15 @@ class FileSearchTab(QWidget):
             income_types = self.config_manager.get_section('FolderNames_Income').values()
             all_types = sorted(list(set(list(expenditure_types) + list(income_types))))
             self.doc_type_combo.addItems(all_types)
-        elif transaction_category == "支出情報":
+        elif transaction_category == CATEGORY_EXPENDITURE:
             expenditure_types = self.config_manager.get_section('FolderNames_Expenditure').values()
             self.doc_type_combo.addItems(sorted(list(expenditure_types)))
-        elif transaction_category == "収入情報":
+        elif transaction_category == CATEGORY_INCOME:
             income_types = self.config_manager.get_section('FolderNames_Income').values()
             self.doc_type_combo.addItems(sorted(list(income_types)))
-        elif transaction_category == "その他団体":
+        elif transaction_category == CATEGORY_OTHER_ORG:
             # その他団体の場合は書類種別は表示しない
             self.doc_type_combo.setVisible(False)
-        else:
-            # デフォルトは全て表示
-            expenditure_types = self.config_manager.get_section('FolderNames_Expenditure').values()
-            income_types = self.config_manager.get_section('FolderNames_Income').values()
-            all_types = sorted(list(set(list(expenditure_types) + list(income_types))))
-            self.doc_type_combo.addItems(all_types)
 
     def _populate_other_org_subfolder_combo(self):
         """その他団体のサブフォルダを読み込む"""
@@ -215,7 +215,7 @@ class FileSearchTab(QWidget):
 
     def _on_transaction_category_changed(self, category):
         """取引区分が変更された時の処理"""
-        if category == "その他団体":
+        if category == CATEGORY_OTHER_ORG:
             # その他団体の場合、書類種別を非表示にしてサブフォルダを表示
             self.doc_type_combo.setVisible(False)
             self.other_org_subfolder_combo.setVisible(True)
@@ -232,8 +232,6 @@ class FileSearchTab(QWidget):
         layout = QVBoxLayout()
 
         self.results_table = QTableWidget()
-        # テーブルの最小高さを削除して、より多くの行を表示
-        # self.results_table.setMinimumHeight(150)  # コメントアウト
         self.results_table.setColumnCount(8)
         self.results_table.setHorizontalHeaderLabels([
             "ID", "通し番号", "発行日", "金額(税込)", "取引先名",
@@ -243,13 +241,14 @@ class FileSearchTab(QWidget):
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers) # Make table read-only
         self.results_table.cellDoubleClicked.connect(self._open_pdf)
 
-        # スクロールバーの設定を明示的に設定
-        from PyQt6.QtCore import Qt
         self.results_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         apply_table_style(self.results_table)
-        
+
+        # 行の高さを2倍に設定
+        self.results_table.verticalHeader().setDefaultSectionSize(60)
+
         header = self.results_table.horizontalHeader()
 
         # オートフィット設定 - 内容に合わせて列幅を自動調整
@@ -265,20 +264,14 @@ class FileSearchTab(QWidget):
         return results_group
 
     def _search_files(self):
-        # デバッグ情報をログファイルに出力
-        import logging
-        logging.basicConfig(filename='search_debug.log', level=logging.DEBUG,
-                          format='%(asctime)s - %(message)s', filemode='a')
-
-        logging.debug("検索ボタンがクリックされました")
+        logger.debug("検索ボタンがクリックされました")
         year_nendo = self.year_combo.currentText()
-        logging.debug(f"選択された年: {year_nendo}")
+        logger.debug(f"選択された年: {year_nendo}")
 
-        if year_nendo == "年なし" or not year_nendo: # Handle case where no years are found
-            logging.debug("年が選択されていない")
+        if year_nendo == "年なし" or not year_nendo:
+            logger.debug("年が選択されていない")
             QMessageBox.warning(self, "入力エラー", "検索する年を選択してください。")
             return
-        # No need for isdigit() check as it comes from valid folder names
 
         # Collect search criteria
         # 最小日付（1900/1/1）または年の1月1日の場合は検索条件に含めない
@@ -291,15 +284,15 @@ class FileSearchTab(QWidget):
         is_year_start_to = (year and current_to_date == QDate(year, 1, 1))
 
         # 最小日付または年の1月1日の場合は条件に含めない
-        date_from = None if (current_from_date <= QDate(1900, 1, 1) or is_year_start_from) else current_from_date
-        date_to = None if (current_to_date <= QDate(1900, 1, 1) or is_year_start_to) else current_to_date
+        date_from = None if (current_from_date <= QDate(DATE_UNSPECIFIED_YEAR, 1, 1) or is_year_start_from) else current_from_date
+        date_to = None if (current_to_date <= QDate(DATE_UNSPECIFIED_YEAR, 1, 1) or is_year_start_to) else current_to_date
 
         # 取引区分とサブフォルダの処理
         transaction_category = self.transaction_category_combo.currentText()
         doc_type = None
         other_org_subfolder = None
 
-        if transaction_category == "その他団体":
+        if transaction_category == CATEGORY_OTHER_ORG:
             # その他団体の場合はサブフォルダを検索条件に追加
             subfolder = self.other_org_subfolder_combo.currentText()
             if subfolder and subfolder != "すべて":
@@ -321,22 +314,23 @@ class FileSearchTab(QWidget):
             "memo": self.memo_edit.text()
         }
 
-        logging.debug(f"検索条件: {criteria}")
+        logger.debug(f"検索条件: {criteria}")
 
         try:
-            logging.debug("metadata_manager.search_entries を呼び出し中...")
+            logger.debug("metadata_manager.search_entries を呼び出し中...")
             results_df = self.metadata_manager.search_entries(**criteria)
-            logging.debug(f"検索結果: {len(results_df)} 件")
+            logger.debug(f"検索結果: {len(results_df)} 件")
             self._populate_table(results_df)
-            logging.debug("テーブルに結果を表示完了")
+            logger.debug("テーブルに結果を表示完了")
 
-            # 結果をメッセージボックスでも表示
-            QMessageBox.information(self, "検索完了", f"検索が完了しました。\n結果: {len(results_df)} 件")
+            # ステータスバーに結果件数を表示
+            parent = self.window()
+            if hasattr(parent, 'status_bar'):
+                parent.status_bar.showMessage(f"検索完了: {len(results_df)} 件")
 
         except Exception as e:
-            logging.debug(f"検索エラー: {e}")
-            import traceback
-            logging.debug(traceback.format_exc())
+            logger.debug(f"検索エラー: {e}")
+            logger.debug(traceback.format_exc())
             QMessageBox.critical(self, "検索エラー", f"検索中にエラーが発生しました。\n{e}")
 
     def _populate_table(self, df):
@@ -368,7 +362,7 @@ class FileSearchTab(QWidget):
         record_id_item = self.results_table.item(row, 0)
         if not record_id_item:
             return
-        
+
         record_id = record_id_item.text()
         year_nendo = self.year_combo.currentText()
 
@@ -420,7 +414,7 @@ class FileSearchTab(QWidget):
 
         # Open dialog
         try:
-            dialog = EditDialog(current_data, self)
+            dialog = EditDialog(current_data, year_nendo, self.config_manager, self.metadata_manager, self)
         except ValueError as e:
             QMessageBox.critical(self, "エラー", f"編集ダイアログの初期化に失敗しました。\n{e}")
             return
@@ -430,24 +424,39 @@ class FileSearchTab(QWidget):
 
         if dialog.exec():
             new_data = dialog.get_updated_data()
-            
+
+            # 移動かどうか判定
+            is_location_changed = (
+                new_data['destination_year'] != year_nendo or
+                new_data['destination_category'] != current_data.get('category') or
+                new_data['destination_doc_type'] != current_data.get('doc_type')
+            )
+
             # Validation
             if not self.validator.is_valid_date(new_data['issue_date']):
                 QMessageBox.warning(self, "入力エラー", "発行日の形式が正しくありません。(YYYYMMDD)")
                 return
-            
+
             is_valid_amount, amount_val = self.validator.is_valid_amount(new_data['amount'])
             if not is_valid_amount:
                 QMessageBox.warning(self, "入力エラー", "金額の形式が正しくありません。")
                 return
-            new_data['amount'] = amount_val # Use the normalized integer value
+            new_data['amount'] = amount_val
 
             # Update data
             try:
                 success = self.metadata_manager.update_entry(year_nendo, record_id, new_data)
                 if success:
-                    QMessageBox.information(self, "成功", "レコードを更新しました。")
-                    self._search_files() # Refresh table
+                    if is_location_changed:
+                        # 移動後にインデックスを自動再構築
+                        try:
+                            self.metadata_manager.rebuild_index()
+                        except Exception as rebuild_e:
+                            logger.warning(f"インデックス再構築に失敗しました: {rebuild_e}")
+                        QMessageBox.information(self, "成功", "ファイルを移動し、インデックスを再構築しました。")
+                    else:
+                        QMessageBox.information(self, "成功", "レコードを更新しました。")
+                    self._search_files()
                 else:
                     QMessageBox.warning(self, "エラー", "レコードの更新に失敗しました。")
             except Exception as e:
@@ -493,8 +502,8 @@ class FileSearchTab(QWidget):
         self.doc_type_combo.setCurrentIndex(0)
         self.other_org_subfolder_combo.setCurrentIndex(0)
         self.client_name_edit.clear()
-        self.date_from_edit.setDate(QDate(1900, 1, 1))  # 最小日付に設定（「指定なし」表示）
-        self.date_to_edit.setDate(QDate(1900, 1, 1))    # 最小日付に設定（「指定なし」表示）
+        self.date_from_edit.setDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
+        self.date_to_edit.setDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
         self.amount_from_edit.clear()
         self.amount_to_edit.clear()
         self.memo_edit.clear()
@@ -526,7 +535,7 @@ class FileSearchTab(QWidget):
 
     def _on_from_date_changed(self, date):
         """From日付が変更された時にTo日付を更新"""
-        if date > QDate(1900, 1, 1):  # 「指定なし」でない場合
+        if date > QDate(DATE_UNSPECIFIED_YEAR, 1, 1):  # 「指定なし」でない場合
             # To日付をFrom日付以降に設定（同じ日付から開始）
             if self.date_to_edit.date() < date:
                 self.date_to_edit.setDate(date)
@@ -535,13 +544,13 @@ class FileSearchTab(QWidget):
 
     def _reset_date_fields(self):
         """日付フィールドを初期状態にリセット"""
-        self.date_from_edit.setMinimumDate(QDate(1900, 1, 1))
+        self.date_from_edit.setMinimumDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
         self.date_from_edit.setMaximumDate(QDate(2100, 12, 31))
-        self.date_from_edit.setDate(QDate(1900, 1, 1))  # 「指定なし」表示
+        self.date_from_edit.setDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
 
-        self.date_to_edit.setMinimumDate(QDate(1900, 1, 1))
+        self.date_to_edit.setMinimumDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
         self.date_to_edit.setMaximumDate(QDate(2100, 12, 31))
-        self.date_to_edit.setDate(QDate(1900, 1, 1))    # 「指定なし」表示
+        self.date_to_edit.setDate(QDate(DATE_UNSPECIFIED_YEAR, 1, 1))
 
     def refresh_data(self):
         """Public method to allow refreshing the data in the combo boxes."""

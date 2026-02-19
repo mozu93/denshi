@@ -2,22 +2,20 @@ import os
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QPushButton, QFileDialog, QLabel, QHBoxLayout, QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QTabWidget, QWidget, QSplitter, QFormLayout
 from models.client_manager import ClientManager
 from utils.ui_styles import apply_button_style, apply_small_button_style, apply_table_style
+from utils.constants import HARDCODED_ROOT_SAVE_DIRECTORY, HARDCODED_SHARED_CONFIG_PATH
 
 SHARED_CONFIG_FILENAME = 'shared_config.path'
 
-# ハードコードされたパス設定
-HARDCODED_SHARED_CONFIG_PATH = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存\config.ini"
-HARDCODED_ROOT_SAVE_DIRECTORY = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存"
-
 class SettingsDialog(QDialog):
-    def __init__(self, config_manager, metadata_manager, parent=None):
+    def __init__(self, config_manager, metadata_manager, parent=None, test_mode=False):
         super().__init__(parent)
         self.config_manager = config_manager
         self.metadata_manager = metadata_manager
         self.client_manager = ClientManager(config_manager)
         self.new_root_dir = None
         self.editing_client_id = None  # 編集中のクライアントID
-        self.setWindowTitle("設定")
+        self.test_mode = test_mode
+        self.setWindowTitle("設定" if not test_mode else "設定 [テストモード]")
         self.main_layout = QVBoxLayout(self)
 
         # 2カラムレイアウト用のスプリッター
@@ -36,7 +34,8 @@ class SettingsDialog(QDialog):
         self.main_layout.addWidget(self.splitter)
 
         # --- 共有設定 --- #
-        shared_config_group = QGroupBox("共有設定（ハードコード）")
+        shared_config_group = QGroupBox("共有設定（ハードコード）" if not test_mode else "共有設定")
+        self.shared_config_group = shared_config_group
         shared_config_layout = QVBoxLayout()
         self.shared_config_path_layout = QHBoxLayout()
         self.shared_config_path_label = QLabel("共有設定ファイル(config.ini)のパス:")
@@ -59,7 +58,8 @@ class SettingsDialog(QDialog):
         self.left_layout.addWidget(shared_config_group)
 
         # Root Save Directory
-        root_dir_group = QGroupBox("保存先設定（ハードコード）")
+        root_dir_group = QGroupBox("保存先設定（ハードコード）" if not test_mode else "保存先設定")
+        self.root_dir_group = root_dir_group
         root_dir_group_layout = QVBoxLayout()
         self.root_dir_layout = QHBoxLayout()
         self.root_dir_label = QLabel("ルート保存ディレクトリ:")
@@ -203,6 +203,38 @@ class SettingsDialog(QDialog):
 
         self.load_settings()
         self._apply_styles()
+        if self.test_mode:
+            self._enable_test_mode_ui()
+
+    def _enable_test_mode_ui(self):
+        """テストモード時に共有設定・保存先設定を編集可能にする"""
+        self.shared_config_path_edit.setReadOnly(False)
+        self.shared_config_path_button.setEnabled(True)
+        self.clear_shared_config_button.setEnabled(True)
+        self.root_dir_edit.setReadOnly(False)
+        self.root_dir_button.setEnabled(True)
+        # 実際に保存されているパスを表示
+        actual_root = self.config_manager.get('Paths', 'root_save_directory', fallback=HARDCODED_ROOT_SAVE_DIRECTORY)
+        self.root_dir_edit.setText(actual_root)
+
+    def _load_doc_type_table(self, table, section):
+        """書類種別テーブルに設定セクションの内容を読み込む共通ヘルパー"""
+        table.setRowCount(0)
+        for key, value in self.config_manager.get_section(section).items():
+            row = table.rowCount()
+            table.insertRow(row)
+            table.setItem(row, 0, QTableWidgetItem(key))
+            table.setItem(row, 1, QTableWidgetItem(value))
+
+    def _read_doc_type_table(self, table):
+        """書類種別テーブルの内容を辞書として読み取る共通ヘルパー"""
+        result = {}
+        for row in range(table.rowCount()):
+            k = table.item(row, 0)
+            v = table.item(row, 1)
+            if k and v:
+                result[k.text()] = v.text()
+        return result
 
     def load_settings(self):
         # 共有設定パスの読み込み - ハードコードされたパスを優先表示
@@ -214,32 +246,9 @@ class SettingsDialog(QDialog):
         tesseract_path = self.config_manager.get_tesseract_path()
         self.tesseract_path_edit.setText(tesseract_path)
 
-        self.expenditure_doc_type_table.setRowCount(0)
-        expenditure_folder_names = self.config_manager.get_section('FolderNames_Expenditure')
-        if expenditure_folder_names:
-            for key, value in expenditure_folder_names.items():
-                row_position = self.expenditure_doc_type_table.rowCount()
-                self.expenditure_doc_type_table.insertRow(row_position)
-                self.expenditure_doc_type_table.setItem(row_position, 0, QTableWidgetItem(key))
-                self.expenditure_doc_type_table.setItem(row_position, 1, QTableWidgetItem(value))
-
-        self.income_doc_type_table.setRowCount(0)
-        income_folder_names = self.config_manager.get_section('FolderNames_Income')
-        if income_folder_names:
-            for key, value in income_folder_names.items():
-                row_position = self.income_doc_type_table.rowCount()
-                self.income_doc_type_table.insertRow(row_position)
-                self.income_doc_type_table.setItem(row_position, 0, QTableWidgetItem(key))
-                self.income_doc_type_table.setItem(row_position, 1, QTableWidgetItem(value))
-
-        self.other_org_doc_type_table.setRowCount(0)
-        other_org_folder_names = self.config_manager.get_section('FolderNames_OtherOrganization')
-        if other_org_folder_names:
-            for key, value in other_org_folder_names.items():
-                row_position = self.other_org_doc_type_table.rowCount()
-                self.other_org_doc_type_table.insertRow(row_position)
-                self.other_org_doc_type_table.setItem(row_position, 0, QTableWidgetItem(key))
-                self.other_org_doc_type_table.setItem(row_position, 1, QTableWidgetItem(value))
+        self._load_doc_type_table(self.expenditure_doc_type_table, 'FolderNames_Expenditure')
+        self._load_doc_type_table(self.income_doc_type_table, 'FolderNames_Income')
+        self._load_doc_type_table(self.other_org_doc_type_table, 'FolderNames_OtherOrganization')
 
         # 取引先データを読み込み
         self.load_clients()
@@ -264,42 +273,24 @@ class SettingsDialog(QDialog):
 
     def save_settings(self):
         try:
-            # ハードコードされたパスのため、保存処理は行わない
-            # 共有設定と保存先ディレクトリはハードコードされているため、変更されません
-
-            # --- その他の設定の保存 ---
-            # ルート保存ディレクトリもハードコードされているため、config.iniへの保存は不要
-            # ただし、他の部分との互換性のため、self.new_root_dirには値を設定
-            self.new_root_dir = HARDCODED_ROOT_SAVE_DIRECTORY
+            if self.test_mode:
+                # テストモード: 入力された値を保存
+                root_dir = self.root_dir_edit.text().strip()
+                self.new_root_dir = root_dir if root_dir else HARDCODED_ROOT_SAVE_DIRECTORY
+                self.config_manager.set('Paths', 'root_save_directory', self.new_root_dir)
+            else:
+                # 通常モード: ハードコードされたパスを使用
+                self.new_root_dir = HARDCODED_ROOT_SAVE_DIRECTORY
 
             tesseract_path = self.tesseract_path_edit.text()
             self.config_manager.set_tesseract_path(tesseract_path)
 
-            expenditure_doc_types_to_save = {}
-            for row in range(self.expenditure_doc_type_table.rowCount()):
-                key_item = self.expenditure_doc_type_table.item(row, 0)
-                value_item = self.expenditure_doc_type_table.item(row, 1)
-                if key_item and value_item:
-                    expenditure_doc_types_to_save[key_item.text()] = value_item.text()
-            self.config_manager.set_section('FolderNames_Expenditure', expenditure_doc_types_to_save)
-
-            income_doc_types_to_save = {}
-            for row in range(self.income_doc_type_table.rowCount()):
-                key_item = self.income_doc_type_table.item(row, 0)
-                value_item = self.income_doc_type_table.item(row, 1)
-                if key_item and value_item:
-                    income_doc_types_to_save[key_item.text()] = value_item.text()
-            self.config_manager.set_section('FolderNames_Income', income_doc_types_to_save)
-
-            other_org_doc_types_to_save = {}
-            for row in range(self.other_org_doc_type_table.rowCount()):
-                key_item = self.other_org_doc_type_table.item(row, 0)
-                value_item = self.other_org_doc_type_table.item(row, 1)
-                if key_item and value_item:
-                    other_org_doc_types_to_save[key_item.text()] = value_item.text()
-            self.config_manager.set_section('FolderNames_OtherOrganization', other_org_doc_types_to_save)
-
-            # ハードコードされたパスのため、再起動メッセージは不要
+            self.config_manager.set_section('FolderNames_Expenditure',
+                                            self._read_doc_type_table(self.expenditure_doc_type_table))
+            self.config_manager.set_section('FolderNames_Income',
+                                            self._read_doc_type_table(self.income_doc_type_table))
+            self.config_manager.set_section('FolderNames_OtherOrganization',
+                                            self._read_doc_type_table(self.other_org_doc_type_table))
 
             self.accept()
 

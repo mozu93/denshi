@@ -1,5 +1,8 @@
+import logging
 import pytesseract
 import os
+
+logger = logging.getLogger(__name__)
 
 class OcrProcessor:
     @staticmethod
@@ -16,9 +19,8 @@ class OcrProcessor:
             # This error will be handled properly when OCR is actually used.
             # For warm-up, we can ignore it.
             pass
-        except Exception:
-            # Ignore other exceptions during warm-up as well.
-            pass
+        except Exception as e:
+            logger.warning(f"OCRウォームアップ中にエラーが発生しました: {e}")
 
     def __init__(self, image, config_manager):
         self.image = image

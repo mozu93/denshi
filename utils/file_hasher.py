@@ -1,4 +1,7 @@
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_file_hash(file_path):
     """Calculates the SHA256 hash of a file."""
@@ -11,5 +14,5 @@ def get_file_hash(file_path):
     except FileNotFoundError:
         return None
     except Exception as e:
-        print(f"Error calculating hash for {file_path}: {e}")
+        logger.error(f"ハッシュ計算に失敗しました {file_path}: {e}")
         return None

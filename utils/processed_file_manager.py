@@ -78,7 +78,7 @@ class ProcessedFileManager:
         processed_folder = self.get_processed_folder_path(source_folder)
 
         if not os.path.exists(processed_folder):
-            return
+            return 0
 
         cutoff_date = datetime.datetime.now() - datetime.timedelta(days=self.RETENTION_DAYS)
         deleted_count = 0

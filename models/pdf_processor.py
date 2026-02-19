@@ -1,4 +1,7 @@
+import logging
 import fitz  # PyMuPDF
+
+logger = logging.getLogger(__name__)
 
 class PdfProcessor:
     def __init__(self, pdf_path):
@@ -10,7 +13,7 @@ class PdfProcessor:
             self.doc = fitz.open(self.pdf_path)
             return True
         except Exception as e:
-            print(f"Error opening PDF: {e}")
+            logger.error(f"PDFを開けませんでした: {e}")
             return False
 
     def get_page_as_pixmap(self, page_num, scale_factor=1):

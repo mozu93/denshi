@@ -1,0 +1,17 @@
+# NASパス
+HARDCODED_ROOT_SAVE_DIRECTORY = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存"
+HARDCODED_SHARED_CONFIG_PATH  = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存\config.ini"
+
+# 取引区分
+CATEGORY_EXPENDITURE = "支出情報"
+CATEGORY_INCOME      = "収入情報"
+CATEGORY_OTHER_ORG   = "その他団体"
+CATEGORIES = [CATEGORY_EXPENDITURE, CATEGORY_INCOME, CATEGORY_OTHER_ORG]
+
+# フォントサイズ
+DEFAULT_FONT_SIZE = 10
+MIN_FONT_SIZE     = 8
+MAX_FONT_SIZE     = 24
+
+# 日付番兵値
+DATE_UNSPECIFIED_YEAR = 1900

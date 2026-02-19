@@ -130,7 +130,8 @@ class ClientManager:
             # 新しいIDを生成
             return f"client_{max_id + 1:03d}"
 
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"クライアントID生成でエラー: {e}")
             return "client_001"
 
     def search_clients(self, query):
@@ -175,7 +176,6 @@ class ClientManager:
     def check_duplicate_details(self, name, furigana, exclude_id=None):
         """重複チェックの詳細情報を返す"""
         try:
-            import jaconv
             all_clients = self.get_all_clients()
 
             duplicate_name = False

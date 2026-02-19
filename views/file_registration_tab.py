@@ -1,17 +1,19 @@
 import os
 import shutil
 import io
+import logging
 from functools import partial
 import re
 
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QListWidget, QLabel, QLineEdit, QFormLayout,
     QPushButton, QVBoxLayout, QGroupBox, QRadioButton, QComboBox, QTextEdit,
-    QSplitter, QMessageBox, QFileDialog, QScrollArea, QToolBar, QApplication, QGridLayout
+    QSplitter, QMessageBox, QFileDialog, QScrollArea, QToolBar, QApplication,
+    QGridLayout, QListWidgetItem, QInputDialog
 )
 from PyQt6.QtGui import QPixmap, QImage, QColor, QPainter, QPen, QAction, QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QBuffer, QIODevice, QPoint, QRect, QSize
-from PIL import Image, ImageQt # Import ImageQt
+from PIL import Image, ImageQt
 
 from models.pdf_processor import PdfProcessor
 from models.ocr_processor import OcrProcessor
@@ -21,8 +23,9 @@ from utils.file_hasher import get_file_hash
 from utils.processed_file_manager import ProcessedFileManager
 from models.client_manager import ClientManager
 from utils.ui_styles import apply_button_style, apply_small_button_style, apply_list_widget_style
+from utils.constants import CATEGORY_EXPENDITURE, CATEGORY_INCOME, CATEGORY_OTHER_ORG
 
-from PyQt6.QtWidgets import QFileDialog
+logger = logging.getLogger(__name__)
 
 class SelectablePdfPreviewLabel(QLabel):
     """A QLabel that allows drawing a selection rectangle and emits a signal with the selected region."""
@@ -93,33 +96,24 @@ class FileRegistrationTab(QWidget):
         self._update_placeholder_visibility()
         self._apply_styles()
 
-    def _play_warning_sound(self):
-        """システム警告音を再生"""
-        try:
-            QApplication.beep()
-            import platform
-            if platform.system() == 'Windows':
-                try:
-                    import winsound
-                    winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-                except ImportError:
-                    pass
-        except Exception as e:
-            print(f"DEBUG: 警告音再生エラー: {e}")
+    def _play_sound(self, sound_type: str):
+        """システム音を再生 ('warning' or 'error')"""
+        import platform
+        if platform.system() == 'Windows':
+            try:
+                import winsound
+                freq, duration = (440, 200) if sound_type == 'warning' else (880, 500)
+                winsound.Beep(freq, duration)
+            except Exception as e:
+                logger.warning(f"サウンド再生エラー: {e}")
 
-    def _play_error_sound(self):
-        """システムエラー音を再生"""
-        try:
-            QApplication.beep()
-            import platform
-            if platform.system() == 'Windows':
-                try:
-                    import winsound
-                    winsound.MessageBeep(winsound.MB_ICONERROR)
-                except ImportError:
-                    pass
-        except Exception as e:
-            print(f"DEBUG: エラー音再生エラー: {e}")
+    def _get_transaction_type(self) -> str:
+        """選択中のラジオボタンに基づいて取引区分を返す"""
+        if self.transaction_type_expenditure_radio.isChecked():
+            return CATEGORY_EXPENDITURE
+        elif self.transaction_type_income_radio.isChecked():
+            return CATEGORY_INCOME
+        return CATEGORY_OTHER_ORG
 
     def _create_widgets(self):
         """Create all the widgets for the tab."""
@@ -129,7 +123,7 @@ class FileRegistrationTab(QWidget):
         self.placeholder_label = QLabel("ここへPDFファイルをドラッグアンドドロップしてください。")
         self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.placeholder_label.setStyleSheet("color: #888;")
-        
+
         self.toolbar = QToolBar()
         self.zoom_in_action = QAction(QIcon.fromTheme("zoom-in"), "Zoom In", self)
         self.zoom_out_action = QAction(QIcon.fromTheme("zoom-out"), "Zoom Out", self)
@@ -152,21 +146,26 @@ class FileRegistrationTab(QWidget):
         self.recall_client_button = QPushButton("呼出")
         self.amount_edit = QLineEdit()
         self.memo_edit = QTextEdit()
+        self.remove_file_button = QPushButton(QIcon.fromTheme("list-remove"), "リストから削除")
         self.filename_preview_label = QLabel("(ファイル名プレビュー)")
         self.save_button = QPushButton("保存して次へ")
 
     def _setup_layout(self):
         """Set up the layout of the tab."""
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.setLayout(QHBoxLayout()) 
+        self.setLayout(QHBoxLayout())
         self.layout().addWidget(main_splitter)
 
         left_splitter = QSplitter(Qt.Orientation.Vertical)
         file_list_group = QGroupBox("登録ファイル")
-        
+
         file_list_layout = QGridLayout()
         file_list_layout.addWidget(self.file_list_widget, 0, 0)
         file_list_layout.addWidget(self.placeholder_label, 0, 0)
+        remove_btn_layout = QHBoxLayout()
+        remove_btn_layout.addWidget(self.remove_file_button)
+        remove_btn_layout.addStretch()
+        file_list_layout.addLayout(remove_btn_layout, 1, 0)
         file_list_group.setLayout(file_list_layout)
 
         left_splitter.addWidget(file_list_group)
@@ -246,6 +245,7 @@ class FileRegistrationTab(QWidget):
         self.file_list_widget.model().rowsRemoved.connect(self._update_placeholder_visibility)
         self.pdf_preview_label.selection_changed.connect(self.on_region_selected)
         self.save_button.clicked.connect(self.save_and_next)
+        self.remove_file_button.clicked.connect(self._remove_from_list)
         self.register_client_button.clicked.connect(self.register_client)
         self.recall_client_button.clicked.connect(self.show_client_selection)
 
@@ -283,7 +283,7 @@ class FileRegistrationTab(QWidget):
         last_year = self.config_manager.get_last_input('year')
         if last_year:
             self.year_edit.setText(last_year)
-        
+
         last_doc_type_index = self.config_manager.get_last_input('doc_type_index')
         if last_doc_type_index is not None:
             try:
@@ -302,12 +302,7 @@ class FileRegistrationTab(QWidget):
             self.placeholder_label.show()
 
     def open_file_dialog(self):
-        """ファイルダイアログを開いてPDFファイルを選択
-
-        機能:
-        - 最後に使用したフォルダを記憶し次回表示
-        - 選択したフォルダの古いファイルをクリーンアップ（30日経過後削除）
-        """
+        """ファイルダイアログを開いてPDFファイルを選択"""
         # 最後に使用したフォルダパスを取得
         last_folder = self.config_manager.get_last_folder_path()
 
@@ -327,9 +322,9 @@ class FileRegistrationTab(QWidget):
             try:
                 deleted_count = self.processed_file_manager.cleanup_old_files(first_file_folder)
                 if deleted_count > 0:
-                    print(f"INFO: 30日経過した処理済ファイル {deleted_count}件を削除しました")
+                    logger.info(f"30日経過した処理済ファイル {deleted_count}件を削除しました")
             except Exception as e:
-                print(f"WARNING: 古いファイルの削除でエラー: {e}")
+                logger.warning(f"古いファイルの削除でエラー: {e}")
 
             # ファイルをリストに追加
             for file in files:
@@ -359,18 +354,17 @@ class FileRegistrationTab(QWidget):
                 f"登録済みのファイル名: {registered_filename}\n"
                 f"登録先: {year}"
             )
-            self._play_warning_sound()
+            self._play_sound('warning')
             QMessageBox.warning(self, "重複ファイルの検出", msg)
             return
 
         for i in range(self.file_list_widget.count()):
             if self.file_list_widget.item(i).text() == file_path:
-                self._play_warning_sound()
+                self._play_sound('warning')
                 QMessageBox.warning(self, "警告", "このファイルは既にリストに追加されています。")
                 return
 
         was_empty = self.file_list_widget.count() == 0
-        from PyQt6.QtWidgets import QListWidgetItem
         item = QListWidgetItem(file_path)
         item.setData(Qt.ItemDataRole.UserRole, file_path)
         self.file_list_widget.addItem(item)
@@ -394,7 +388,7 @@ class FileRegistrationTab(QWidget):
             self.pdf_preview_label.clear()
             self.pdf_preview_label.setText("ここにPDFのプレビューが表示されます")
             return
-        
+
         file_path = current.text()
         pdf_processor = PdfProcessor(file_path)
         if not pdf_processor.open():
@@ -402,7 +396,7 @@ class FileRegistrationTab(QWidget):
             return
 
         fitz_pixmap_high_res = pdf_processor.get_page_as_pixmap(0, scale_factor=self.ocr_scale_factor)
-        
+
         fitz_pixmap_display = pdf_processor.get_page_as_pixmap(0, scale_factor=self.zoom_level)
         pdf_processor.close()
 
@@ -462,7 +456,7 @@ class FileRegistrationTab(QWidget):
 
         pixmap_width = pixmap_on_label.width()
         pixmap_height = pixmap_on_label.height()
-        
+
         if pixmap_width == 0 or pixmap_height == 0:
             return
 
@@ -532,12 +526,7 @@ class FileRegistrationTab(QWidget):
             self.doc_id_label.setText("(年形式エラー)")
             return
 
-        if self.transaction_type_expenditure_radio.isChecked():
-            transaction_type = "支出情報"
-        elif self.transaction_type_income_radio.isChecked():
-            transaction_type = "収入情報"
-        else:
-            transaction_type = "その他団体"
+        transaction_type = self._get_transaction_type()
         doc_type = self.document_type_combo.currentText()
         if not doc_type:
             self.doc_id_label.setText("(書類種別未選択)")
@@ -550,7 +539,7 @@ class FileRegistrationTab(QWidget):
         doc_id = self.doc_id_label.text()
         issue_date = self.issue_date_edit.text()
         client_name = self.client_name_edit.text()
-        
+
         is_valid_amount, extracted_amount = self.validator.is_valid_amount(self.amount_edit.text())
         if is_valid_amount:
             amount = str(extracted_amount)
@@ -576,7 +565,7 @@ class FileRegistrationTab(QWidget):
     def save_and_next(self):
         current_item = self.file_list_widget.currentItem()
         if not current_item:
-            self._play_warning_sound()
+            self._play_sound('warning')
             QMessageBox.warning(self, "注意", "処理対象のファイルが選択されていません。")
             return
         source_path = current_item.text()
@@ -587,18 +576,13 @@ class FileRegistrationTab(QWidget):
         amount_raw = self.amount_edit.text()
         memo = self.memo_edit.toPlainText()
         doc_type = self.document_type_combo.currentText()
-        if self.transaction_type_expenditure_radio.isChecked():
-            transaction_type = "支出情報"
-        elif self.transaction_type_income_radio.isChecked():
-            transaction_type = "収入情報"
-        else:
-            transaction_type = "その他団体"
+        transaction_type = self._get_transaction_type()
         doc_id = self.doc_id_label.text()
         root_path = self.config_manager.get('Paths', 'root_save_directory')
 
         is_valid_amount, extracted_amount = self.validator.is_valid_amount(amount_raw)
         if not is_valid_amount:
-            self._play_error_sound()
+            self._play_sound('error')
             QMessageBox.warning(self, "入力エラー", "金額には半角数字のみ入力してください。")
             return
 
@@ -608,7 +592,7 @@ class FileRegistrationTab(QWidget):
             year_int = int(year_raw)
             formatted_year = f"{year_int}年"
         except ValueError:
-            self._play_error_sound()
+            self._play_sound('error')
             QMessageBox.warning(self, "入力エラー", "年は半角数字で入力してください。")
             return
 
@@ -617,7 +601,7 @@ class FileRegistrationTab(QWidget):
         target_path = os.path.normpath(os.path.join(target_dir, new_filename))
 
         if os.path.exists(target_path):
-            self._play_warning_sound()
+            self._play_sound('warning')
             reply = QMessageBox.question(self, '重複ファイル', f"同じファイル名のファイルが既に存在します:\n{target_path}\n\n上書きしますか？",
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
             if reply == QMessageBox.StandardButton.Cancel:
@@ -635,14 +619,14 @@ class FileRegistrationTab(QWidget):
             f"金額: {amount_raw}\n"
         )
 
-        reply = QMessageBox.question(self, '保存確認', message, 
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+        reply = QMessageBox.question(self, '保存確認', message,
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 if not self.validator.is_valid_date(issue_date):
-                    self._play_error_sound()
+                    self._play_sound('error')
                     QMessageBox.warning(self, "入力エラー", "発行日の形式が正しくありません。(YYYYMMDD)")
                     return
 
@@ -675,10 +659,9 @@ class FileRegistrationTab(QWidget):
                         source_folder = os.path.dirname(source_file_path)
                         self.processed_file_manager.cleanup_old_files(source_folder)
                     else:
-                        print(f"ソースファイルが見つかりません: {source_file_path}")
+                        logger.warning(f"ソースファイルが見つかりません: {source_file_path}")
                 except Exception as move_error:
-                    print(f"ファイル移動エラーの詳細: {move_error}")
-                    print(f"エラー発生時のファイルパス: {source_file_path}")
+                    logger.error(f"ファイル移動エラーの詳細: {move_error}")
                     QMessageBox.warning(self, "警告", f"ファイルの移動に失敗しました。\n元ファイル: {source_file_path}\nエラー: {move_error}")
 
                 row = self.file_list_widget.row(current_item)
@@ -691,7 +674,7 @@ class FileRegistrationTab(QWidget):
                 self.config_manager.set_last_input('doc_type_index', str(self.document_type_combo.currentIndex()))
 
             except Exception as e:
-                self._play_error_sound()
+                self._play_sound('error')
                 QMessageBox.critical(self, "エラー", f"ファイルの保存に失敗しました。\n{e}")
 
     def clear_input_fields(self):
@@ -699,6 +682,15 @@ class FileRegistrationTab(QWidget):
         self.client_name_edit.clear()
         self.amount_edit.clear()
         self.memo_edit.clear()
+
+    def _remove_from_list(self):
+        """選択中のファイルを登録リストから除外する（ファイル自体は削除しない）"""
+        current_item = self.file_list_widget.currentItem()
+        if not current_item:
+            return
+        row = self.file_list_widget.row(current_item)
+        self.file_list_widget.takeItem(row)
+        self.select_next_file()
 
     def select_next_file(self):
         if self.file_list_widget.count() > 0:
@@ -721,7 +713,6 @@ class FileRegistrationTab(QWidget):
             return
 
         # フリガナ入力ダイアログを表示
-        from PyQt6.QtWidgets import QInputDialog
         furigana, ok = QInputDialog.getText(
             self, "フリガナ入力",
             f"取引先名「{client_name}」のフリガナを入力してください:"
@@ -752,7 +743,6 @@ class FileRegistrationTab(QWidget):
         # 取引先名リストを作成
         client_names = [f"{client['name']} ({client['furigana']})" for client in clients]
 
-        from PyQt6.QtWidgets import QInputDialog
         selected_item, ok = QInputDialog.getItem(
             self, "取引先選択",
             "取引先を選択してください:",
@@ -770,6 +760,7 @@ class FileRegistrationTab(QWidget):
         apply_button_style(self.save_button)
 
         # 小さなボタン
+        apply_small_button_style(self.remove_file_button)
         apply_small_button_style(self.reload_doc_id_button)
         apply_small_button_style(self.register_client_button)
         apply_small_button_style(self.recall_client_button)

@@ -6,90 +6,69 @@ import logging
 import shutil
 from datetime import datetime
 
+from models.csv_repository import CsvRepository
+from models.file_scanner import FileScanner
+
+logger = logging.getLogger(__name__)
+
+
 class MetadataManager:
     def __init__(self, root_path):
-        # バリデーション: root_pathがNoneや空文字列でないことを確認
         if not root_path or not isinstance(root_path, str):
-            # root_pathが不正な場合、処理を続行できないため例外を送出
             raise ValueError("ルートパスが有効ではありません。")
         self.root_path = root_path
-        self.columns = [
-            'id', 'doc_id', 'category', 'doc_type', 'issue_date', 
-            'client_name', 'amount', 'memo', 'file_path', 'file_hash',
-            'created_at', 'updated_at'
-        ]
+        self._repo = CsvRepository()
+        self._scanner = FileScanner(root_path, self._repo)
+        self.columns = CsvRepository.COLUMNS
 
     def update_root_directory(self, new_root_path):
         """Updates the root directory path."""
         self.root_path = new_root_path
+        self._scanner.root_path = new_root_path
 
     def _get_csv_path(self, year_nendo):
         return os.path.join(self.root_path, year_nendo, 'index.csv')
 
+    # --- CSV I/O delegated to CsvRepository ---
+
     def load_df(self, year_nendo):
-        csv_path = self._get_csv_path(year_nendo)
-        logging.debug(f"load_df - csv_path: {csv_path}")
-        if not csv_path or not os.path.exists(csv_path):
-            logging.debug(f"load_df - CSVファイルが存在しません: {csv_path}")
-            return pd.DataFrame(columns=self.columns)
-
-        try:
-            # Define all columns as string type to avoid dtype issues
-            dtype_map = {col: str for col in self.columns}
-            df = pd.read_csv(csv_path, dtype=dtype_map)
-            logging.debug(f"load_df - CSVを読み込み成功: {len(df)} 行")
-            # カラムの検証: 必須カラムが存在するか確認
-            required_columns = ['id', 'doc_id', 'category', 'doc_type', 'issue_date', 'client_name', 'amount', 'memo', 'file_path']
-            missing_required = [col for col in required_columns if col not in df.columns]
-            if missing_required:
-                logging.warning(f"CSVファイル '{csv_path}' に必須カラム {missing_required} が不足しています。空のデータフレームを返します。")
-                return pd.DataFrame(columns=self.columns)
-
-            # file_hashカラムが存在しない場合は空文字で追加
-            if 'file_hash' not in df.columns:
-                df['file_hash'] = ''
-                logging.debug("file_hashカラムが存在しないため、空文字で追加しました。")
-
-            # 不足しているカラムがあれば追加
-            for col in self.columns:
-                if col not in df.columns:
-                    df[col] = ''
-            return df
-        except (pd.errors.ParserError, Exception) as e:
-            logging.error(f"CSVファイル '{csv_path}' の読み込みに失敗しました: {e}")
-            # 読み込み失敗時は空のデータフレームを返し、処理の続行を試みる
-            return pd.DataFrame(columns=self.columns)
+        return self._repo.load(self._get_csv_path(year_nendo))
 
     def save_df(self, year_nendo, df):
-        csv_path = self._get_csv_path(year_nendo)
-        if not csv_path:
-            raise ValueError(f"無効な年です: {year_nendo}")
+        self._repo.save(self._get_csv_path(year_nendo), df)
 
-        try:
-            # ディレクトリの作成とCSVファイルの保存
-            # - 書き込み権限がない場合にPermissionError/OSErrorが発生する可能性がある
-            os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-            df.to_csv(csv_path, index=False, encoding='utf-8-sig')
-        except (IOError, OSError) as e:
-            logging.error(f"CSVファイル '{csv_path}' の保存に失敗しました: {e}")
-            # 保存失敗はデータ損失に繋がるため、例外を再送出して呼び出し元に通知
-            raise RuntimeError(f"インデックスファイルの保存に失敗しました。権限などを確認してください。: {e}")
+    # --- File system operations delegated to FileScanner ---
+
+    def get_next_doc_id(self, year_nendo, transaction_type, doc_type):
+        return self._scanner.get_next_doc_id(year_nendo, transaction_type, doc_type)
+
+    def recalculate_all_doc_ids(self):
+        self._scanner.recalculate_all_doc_ids()
+
+    def rebuild_index(self):
+        self._scanner.rebuild_index()
+
+    def has_files_for_doc_type(self, transaction_type, doc_type):
+        return self._scanner.has_files_for_doc_type(transaction_type, doc_type)
+
+    def has_any_entries(self):
+        return self._scanner.has_any_entries()
+
+    # --- CRUD / Search operations ---
 
     def add_entry(self, year_nendo, data):
-        # 入力データ(data)の基本的な検証
         if not isinstance(data, dict) or 'doc_id' not in data:
             raise ValueError("追加するデータが無効です。")
 
         df = self.load_df(year_nendo)
         new_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
-        
+
         entry = {
             'id': new_id,
             'created_at': now,
             'updated_at': now
         }
-        # 期待されるカラムのみをdataから取得し、予期せぬキーが追加されるのを防ぐ
         for col in self.columns:
             if col in data:
                 entry[col] = data[col]
@@ -97,185 +76,6 @@ class MetadataManager:
         new_df = pd.concat([df, pd.DataFrame([entry])], ignore_index=True)
         self.save_df(year_nendo, new_df)
         return new_id
-
-    def get_next_doc_id(self, year_nendo, transaction_type, doc_type):
-        # 入力値の検証
-        if not all([year_nendo, transaction_type, doc_type]):
-            return "001"
-
-        target_dir = os.path.join(self.root_path, year_nendo, transaction_type, doc_type)
-
-        try:
-            if not os.path.exists(target_dir):
-                return "001"
-
-            max_id = 0
-            # ディレクトリが読み取れない場合、OSErrorが発生する可能性がある
-            for filename in os.listdir(target_dir):
-                match = re.match(r'(\d+)_.*\.pdf$', filename)
-                if match:
-                    file_id = int(match.group(1))
-                    max_id = max(max_id, file_id)
-
-            return f"{max_id + 1:03d}"
-
-        except OSError as e:
-            logging.error(f"ディレクトリの読み取りに失敗しました: {target_dir}, エラー: {e}")
-            return "001"
-
-    def recalculate_all_doc_ids(self):
-        """起動時に全ドキュメントの通し番号を再計算する。"""
-        logging.info("全ドキュメントの通し番号再計算を開始します。")
-
-        try:
-            if not os.path.exists(self.root_path):
-                logging.warning(f"ルートパスが存在しません: {self.root_path}")
-                return
-
-            # 年度ディレクトリをスキャン
-            for year_nendo_dir in os.listdir(self.root_path):
-                year_path = os.path.join(self.root_path, year_nendo_dir)
-                if not os.path.isdir(year_path) or not re.match(r'^\d{4}年$', year_nendo_dir):
-                    continue
-
-                logging.debug(f"年度 {year_nendo_dir} の処理を開始。")
-
-                # 取引区分（支出情報/収入情報）をスキャン
-                for category_dir in os.listdir(year_path):
-                    category_path = os.path.join(year_path, category_dir)
-                    if not os.path.isdir(category_path):
-                        continue
-
-                    # 書類種別ディレクトリをスキャン
-                    for doc_type_dir in os.listdir(category_path):
-                        doc_type_path = os.path.join(category_path, doc_type_dir)
-                        if not os.path.isdir(doc_type_path):
-                            continue
-
-                        # 各ディレクトリ内のファイルを取得
-                        files = []
-                        for filename in os.listdir(doc_type_path):
-                            if filename.lower().endswith('.pdf'):
-                                files.append(filename)
-
-                        # ファイルをソート（既存の通し番号でソート）
-                        files.sort(key=lambda x: int(re.match(r'(\d+)_', x).group(1)) if re.match(r'(\d+)_', x) else 0)
-
-                        # ファイルをリネーム
-                        for new_id, old_filename in enumerate(files, 1):
-                            old_path = os.path.join(doc_type_path, old_filename)
-                            parts = old_filename.replace('.pdf', '').split('_')
-
-                            if len(parts) >= 3:
-                                # 新しいIDで再構成（形式: {ID}_{日付}_{金額}_{取引先}.pdf）
-                                new_id_str = f"{new_id:03d}"
-                                new_filename = f"{new_id_str}_{'_'.join(parts[1:])}.pdf"
-                                new_path = os.path.join(doc_type_path, new_filename)
-
-                                if old_path != new_path:
-                                    try:
-                                        os.rename(old_path, new_path)
-                                        logging.debug(f"リネーム: {old_filename} → {new_filename}")
-                                    except OSError as e:
-                                        logging.error(f"ファイルのリネームに失敗しました: {old_path} → {new_path}, エラー: {e}")
-
-            logging.info("全ドキュメントの通し番号再計算が完了しました。")
-        except Exception as e:
-            logging.error(f"通し番号再計算処理でエラーが発生しました: {e}")
-
-    def rebuild_index(self):
-        """Scans all managed directories, parses filenames, and overwrites the index.csv for each year.
-        Preserves memo data from existing index.csv if available."""
-        for year_nendo_dir in os.listdir(self.root_path):
-            year_path = os.path.join(self.root_path, year_nendo_dir)
-            if not os.path.isdir(year_path) or not re.match(r'^\d{4}年$', year_nendo_dir):
-                continue
-
-            # 既存のインデックスからメモデータを読み込む
-            old_memo_map = {}
-            try:
-                old_df = self.load_df(year_nendo_dir)
-                if not old_df.empty and 'memo' in old_df.columns:
-                    # {category}/{doc_type}/{doc_id}_{issue_date}_{amount}_{client_name}.pdf キーでメモを保存
-                    for _, row in old_df.iterrows():
-                        file_path = row.get('file_path', '')
-                        memo = row.get('memo', '')
-                        if file_path and memo:
-                            old_memo_map[file_path] = memo
-                logging.debug(f"Loaded {len(old_memo_map)} memos from existing index for {year_nendo_dir}")
-            except Exception as e:
-                logging.warning(f"Could not load existing memos: {e}")
-
-            current_year_metadata = []
-            for category_dir in os.listdir(year_path):
-                category_path = os.path.join(year_path, category_dir)
-                if not os.path.isdir(category_path):
-                    continue
-
-                for doc_type_dir in os.listdir(category_path):
-                    doc_type_path = os.path.join(category_path, doc_type_dir)
-                    if not os.path.isdir(doc_type_path):
-                        continue
-
-                    for filename in os.listdir(doc_type_path):
-                        if not filename.lower().endswith('.pdf'):
-                            continue
-
-                        file_path = os.path.join(doc_type_path, filename)
-                        parts = filename.replace('.pdf', '').split('_')
-                        if len(parts) != 4:
-                            continue
-
-                        doc_id, issue_date, amount, client_name = parts
-
-                        try:
-                            # 相対パスを計算
-                            relative_path = os.path.relpath(file_path, year_path)
-
-                            # 既存のメモを取得（キーは相対パス）
-                            memo = old_memo_map.get(relative_path, '')
-
-                            metadata = {
-                                'id': str(uuid.uuid4()),
-                                'doc_id': doc_id,
-                                'category': category_dir,
-                                'doc_type': doc_type_dir,
-                                'issue_date': issue_date,
-                                'client_name': client_name,
-                                'amount': int(amount),
-                                'memo': memo,  # 既存のメモを保持
-                                'file_path': relative_path,
-                                'created_at': datetime.now().isoformat(),
-                                'updated_at': datetime.now().isoformat()
-                            }
-                            current_year_metadata.append(metadata)
-                        except (ValueError, TypeError):
-                            logging.warning(f"Skipping file with invalid amount: {filename}")
-                            continue
-
-            df = pd.DataFrame(current_year_metadata)
-            self.save_df(year_nendo_dir, df)
-            logging.info(f"Rebuilt index for {year_nendo_dir} with {len(current_year_metadata)} records, preserved {len([m for m in current_year_metadata if m['memo']])} memos")
-
-    def has_files_for_doc_type(self, transaction_type, doc_type):
-        for year_nendo_dir in os.listdir(self.root_path):
-            full_year_path = os.path.join(self.root_path, year_nendo_dir)
-            if os.path.isdir(full_year_path) and re.match(r'^\d{4}年$', year_nendo_dir):
-                target_dir = os.path.join(full_year_path, transaction_type, doc_type)
-                if os.path.exists(target_dir) and len(os.listdir(target_dir)) > 0:
-                    return True
-        return False
-
-    def has_any_entries(self):
-        for year_nendo_dir in os.listdir(self.root_path):
-            full_path = os.path.join(self.root_path, year_nendo_dir)
-            if os.path.isdir(full_path) and re.match(r'^\d{4}年$', year_nendo_dir):
-                csv_path = self._get_csv_path(year_nendo_dir)
-                if os.path.exists(csv_path):
-                    df = pd.read_csv(csv_path)
-                    if not df.empty:
-                        return True
-        return False
 
     def get_available_years(self):
         years = []
@@ -285,7 +85,7 @@ class MetadataManager:
             full_path = os.path.join(self.root_path, entry)
             if os.path.isdir(full_path) and re.match(r'^\d{4}年$', entry):
                 years.append(entry)
-        years.sort(reverse=True) # Newest year first
+        years.sort(reverse=True)  # Newest year first
         return years
 
     def is_hash_registered(self, file_hash):
@@ -299,30 +99,27 @@ class MetadataManager:
             if 'file_hash' in df.columns:
                 result = df[df['file_hash'] == file_hash]
                 if not result.empty:
-                    # Return True, the record, and the year it was found in
                     return True, result.iloc[0].to_dict(), year
         return False, None, None
 
-    def search_entries(self, year_nendo, transaction_category=None, doc_type=None, other_org_subfolder=None, client_name=None, date_from=None, date_to=None, amount_from=None, amount_to=None, memo=None):
-        logging.debug(f"search_entries - 開始 year_nendo={year_nendo}")
+    def search_entries(self, year_nendo, transaction_category=None, doc_type=None,
+                       other_org_subfolder=None, client_name=None, date_from=None,
+                       date_to=None, amount_from=None, amount_to=None, memo=None):
+        logger.debug(f"search_entries - 開始 year_nendo={year_nendo}")
         df = self.load_df(year_nendo)
         if df.empty:
-            logging.debug("search_entries - DataFrameが空です")
+            logger.debug("search_entries - DataFrameが空です")
             return df
 
         df['issue_date'] = pd.to_numeric(df['issue_date'].astype(str), errors='coerce')
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
 
-        # 取引区分でフィルタ
         if transaction_category:
             df = df[df['category'] == transaction_category]
 
-        # その他団体の場合、サブフォルダでフィルタ
         if other_org_subfolder:
-            # file_pathから該当するサブフォルダを含む行のみ抽出
             df = df[df['file_path'].str.contains(other_org_subfolder, na=False)]
 
-        # 書類種別でフィルタ（その他団体以外の場合）
         if doc_type and doc_type != "すべて":
             df = df[df['doc_type'] == doc_type]
 
@@ -360,7 +157,7 @@ class MetadataManager:
         df = self.load_df(year_nendo)
         if df.empty:
             return None
-        
+
         df['id'] = df['id'].astype(str)
         record_id = str(record_id)
 
@@ -394,7 +191,7 @@ class MetadataManager:
 
         df_original['id'] = df_original['id'].astype(str)
         record_id = str(record_id)
-        
+
         original_record_list = df_original.index[df_original['id'] == record_id].tolist()
         if not original_record_list:
             return False
@@ -416,13 +213,14 @@ class MetadataManager:
             str(new_data.get('amount')) != str(original_record.get('amount')) or
             new_data.get('client_name') != original_record.get('client_name')
         )
-        
+
         requires_file_operation = is_location_changed or is_rename_needed
 
         # --- Phase 1: File System Operation ---
-        old_full_path = os.path.normpath(os.path.join(self.root_path, original_year, original_record['file_path']))
+        old_full_path = os.path.normpath(
+            os.path.join(self.root_path, original_year, original_record['file_path'])
+        )
         new_full_path = None
-        # This dictionary will be populated with the results of the file op
         file_op_results = {}
 
         if requires_file_operation:
@@ -430,8 +228,11 @@ class MetadataManager:
                 doc_id = original_record.get('doc_id')
                 if is_location_changed:
                     doc_id = self.get_next_doc_id(dest_year, dest_category, dest_doc_type)
-                
-                new_filename = f"{doc_id}_{new_data['issue_date']}_{new_data['amount']}_{new_data['client_name']}.pdf"
+
+                new_filename = (
+                    f"{doc_id}_{new_data['issue_date']}_"
+                    f"{new_data['amount']}_{new_data['client_name']}.pdf"
+                )
                 new_relative_path = os.path.join(dest_category, dest_doc_type, new_filename)
                 new_full_path = os.path.join(self.root_path, dest_year, new_relative_path)
 
@@ -439,28 +240,26 @@ class MetadataManager:
                     dest_dir = os.path.dirname(new_full_path)
                     os.makedirs(dest_dir, exist_ok=True)
                     shutil.move(old_full_path, new_full_path)
-                
-                # Store results for Phase 2
+
                 file_op_results['file_path'] = new_relative_path
                 file_op_results['doc_id'] = doc_id
 
             except Exception as e:
-                logging.error(f"CRITICAL: File operation failed for record {record_id}. Aborting before index update. Error: {e}")
+                logger.error(
+                    f"CRITICAL: File operation failed for record {record_id}. "
+                    f"Aborting before index update. Error: {e}"
+                )
                 return False
 
         # --- Phase 2: Index (CSV) Operation ---
         try:
-            # Prepare the final record data for saving.
             final_record_data = original_record.copy()
-
-            # Update with metadata from the dialog
             final_record_data['issue_date'] = new_data['issue_date']
             final_record_data['amount'] = new_data['amount']
             final_record_data['client_name'] = new_data['client_name']
             final_record_data['memo'] = new_data['memo']
             final_record_data['updated_at'] = datetime.now().isoformat()
 
-            # If file was moved/renamed, update location fields
             if requires_file_operation:
                 final_record_data['category'] = dest_category
                 final_record_data['doc_type'] = dest_doc_type
@@ -481,19 +280,27 @@ class MetadataManager:
                 # Same-year move or metadata-only update
                 for key, value in final_record_data.items():
                     if key in df_original.columns:
-                         df_original.loc[original_index, key] = value
+                        df_original.loc[original_index, key] = value
                 self.save_df(original_year, df_original)
-            
+
             return True
 
         except Exception as e:
-            logging.critical(f"CRITICAL INCONSISTENCY: Index update failed for record {record_id} AFTER file was moved.")
-            logging.critical(f"Error: {e}")
+            logger.critical(
+                f"CRITICAL INCONSISTENCY: Index update failed for record {record_id} "
+                "AFTER file was moved."
+            )
+            logger.critical(f"Error: {e}")
             if new_full_path and os.path.exists(new_full_path):
-                logging.info(f"Attempting to roll back by moving file from {new_full_path} to {old_full_path}")
+                logger.info(
+                    f"Attempting to roll back by moving file from {new_full_path} to {old_full_path}"
+                )
                 try:
                     shutil.move(new_full_path, old_full_path)
-                    logging.info(f"Rollback successful. File moved back to {old_full_path}")
+                    logger.info(f"Rollback successful. File moved back to {old_full_path}")
                 except Exception as move_back_e:
-                    logging.critical(f"CRITICAL: ROLLBACK FAILED. Manual intervention required. File is at {new_full_path}, index is NOT updated. Error: {move_back_e}")
+                    logger.critical(
+                        f"CRITICAL: ROLLBACK FAILED. Manual intervention required. "
+                        f"File is at {new_full_path}, index is NOT updated. Error: {move_back_e}"
+                    )
             return False
