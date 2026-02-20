@@ -1,0 +1,47 @@
+  📝 次回の更新手順
+
+  次にアプリを修正して配布する場合：
+
+  ステップ1: バージョンを更新
+
+  VERSION.py を編集：
+  __version__ = "v2.1.0"  # v2.0.0 → v2.1.0
+  __build_date__ = "2026-02-21"  # 更新日
+
+  ステップ2: コードを修正
+
+  必要な修正を実施
+
+  ステップ3: ビルド
+
+  python build.py
+
+  ステップ4: GitHubにプッシュ
+
+  git add -A
+  git commit -m "feat: 〇〇機能を追加"
+  git push origin main
+
+  ステップ5: Gitタグを作成
+
+  git tag v2.1.0
+  git push origin v2.1.0
+
+  ステップ6: GitHub Releaseを作成（これが最重要！）
+
+  1. https://github.com/mozu93/denshi/releases にアクセス
+  2. 「Draft a new release」をクリック
+  3. 設定：
+    - Tag: v2.1.0 を選択
+    - Title: v2.1.0
+    - Description: 変更内容を記載
+    - ファイル添付: installer/Output/DenshiChobohozoSystem_v2.1.0_setup.exe をアップロード
+  4. 「Publish release」をクリック
+
+  ステップ7: 自動通知が機能
+
+  Releaseを公開すると：
+  - 職員が次回アプリを起動したとき
+  - GitHub APIが最新Release（v2.1.0）を検出
+  - 「新しいバージョンが利用可能です」とダイアログ表示
+  - ダウンロードページを開けるボタンが表示される

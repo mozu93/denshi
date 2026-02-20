@@ -51,7 +51,7 @@ Source: "..\dist\{#MyAppNameEn}\*"; DestDir: "{app}"; Flags: ignoreversion recur
 Source: "..\config.ini"; DestDir: "{userappdata}\{#MyAppNameEn}"; Flags: onlyifdoesntexist uninsneveruninstall
 
 ; Tesseract OCRインストーラー（同梱する場合）
-; Source: "installer\tesseract-installer.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "tesseract-installer.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 ; アイコンの作成
 [Icons]
@@ -63,7 +63,7 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Fil
 ; 実行処理
 [Run]
 ; Tesseract OCRの自動インストール（オプション）
-; Filename: "{tmp}\tesseract-installer.exe"; Parameters: "/VERYSILENT /NORESTART /DIR=""{autopf}\Tesseract-OCR"""; StatusMsg: "Tesseract OCRをインストールしています..."; Flags: waituntilterminated
+Filename: "{tmp}\tesseract-installer.exe"; Parameters: "/VERYSILENT /NORESTART /DIR=""{autopf}\Tesseract-OCR"""; StatusMsg: "Tesseract OCRをインストールしています..."; Flags: waituntilterminated
 
 ; インストール完了後にアプリケーションを起動（ユーザーが選択可能）
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

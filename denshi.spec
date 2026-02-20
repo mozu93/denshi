@@ -6,7 +6,7 @@ PyInstaller設定ファイル - 電子帳簿保存システム
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
 
 block_cipher = None
 
@@ -24,6 +24,13 @@ datas = [
 # PyMuPDFのデータファイルを含める
 datas += collect_data_files('fitz')
 
+# numpy と pandas のすべてを収集
+numpy_datas, numpy_binaries, numpy_hiddenimports = collect_all('numpy')
+pandas_datas, pandas_binaries, pandas_hiddenimports = collect_all('pandas')
+
+datas += numpy_datas
+datas += pandas_datas
+
 # 隠れたインポートの明示的な指定
 hiddenimports = [
     'PyQt6.QtCore',
@@ -33,6 +40,15 @@ hiddenimports = [
     'pytesseract',
     'fitz',
     'pandas',
+    'pandas._libs',
+    'pandas._libs.tslibs',
+    'pandas._libs.tslibs.base',
+    'pandas._libs.tslibs.np_datetime',
+    'pandas._libs.tslibs.timedeltas',
+    'pandas._libs.tslibs.timestamps',
+    'numpy',
+    'numpy.core',
+    'numpy.core._multiarray_umath',
     'jaconv',
     'send2trash',
     'filelock',
@@ -44,15 +60,14 @@ hiddenimports += collect_submodules('PyQt6')
 a = Analysis(
     ['main.py'],
     pathex=[spec_root],
-    binaries=[],
+    binaries=numpy_binaries + pandas_binaries,
     datas=datas,
-    hiddenimports=hiddenimports,
+    hiddenimports=hiddenimports + numpy_hiddenimports + pandas_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
         'matplotlib',
-        'numpy',
         'scipy',
         'tkinter',
         'unittest',
