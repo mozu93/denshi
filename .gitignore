@@ -31,7 +31,7 @@ MANIFEST
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
-*.spec
+# Note: denshi.spec is tracked because it's our custom PyInstaller config
 
 # Installer logs
 pip-log.txt
@@ -122,3 +122,12 @@ dmypy.json
 # User-specific configuration files
 config.ini
 shared_config.path
+
+# Build artifacts
+file_version_info.txt
+installer/Output/
+installer/*.exe
+installer/*.ico
+
+# OCR debug files
+debug_ocr_image.png

@@ -9,9 +9,10 @@ from utils.constants import HARDCODED_ROOT_SAVE_DIRECTORY, HARDCODED_SHARED_CONF
 
 logger = logging.getLogger(__name__)
 
-# アプリケーションバージョン情報
-APP_VERSION = "v2.0.0"
-APP_BUILD_DATE = "2025-11-07"
+# アプリケーションバージョン情報（VERSION.pyから取得）
+from VERSION import __version__, __build_date__
+APP_VERSION = __version__
+APP_BUILD_DATE = __build_date__
 
 SHARED_CONFIG_FILENAME = 'shared_config.path'
 

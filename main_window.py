@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("準備完了")
         QTimer.singleShot(0, lambda: show_startup_guide(self.config_manager, self))
         QTimer.singleShot(100, lambda: OcrProcessor.warm_up(self.config_manager))
+        QTimer.singleShot(200, lambda: self._check_for_updates())
 
     def _create_actions(self):
         self.open_action = QAction(QIcon.fromTheme("document-open"), "PDFを開く", self)
@@ -205,6 +206,11 @@ class MainWindow(QMainWindow):
         """Reset the font size to default."""
         self.config_manager.set_ui_font_size(DEFAULT_FONT_SIZE)
         self.apply_font_size(DEFAULT_FONT_SIZE)
+
+    def _check_for_updates(self):
+        """アップデートをチェックします。"""
+        from views.update_dialog import check_and_notify_update
+        check_and_notify_update(self, self.config_manager)
 
     def closeEvent(self, event):
         """Save window size and splitter positions before closing."""

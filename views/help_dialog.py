@@ -5,12 +5,12 @@ import os
 # バージョン情報を取得
 def get_version_info():
     try:
-        # main.pyからバージョン情報をインポート
+        # VERSION.pyからバージョン情報をインポート
         sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-        from main import APP_VERSION, APP_BUILD_DATE
-        return APP_VERSION, APP_BUILD_DATE
+        from VERSION import __version__, __build_date__
+        return __version__, __build_date__
     except ImportError:
-        return "v1.2.0", "2025-09-30"
+        return "v2.0.0", "2026-02-20"
 
 def show_help_dialog(parent=None):
     """
