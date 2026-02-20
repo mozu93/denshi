@@ -7,9 +7,8 @@
 #define MyAppURL "https://github.com/your-username/denshi"
 #define MyAppExeName "DenshiChobohozoSystem.exe"
 
-; VERSION.pyから動的に取得される値（build.py経由）
-; ビルド時に自動的に置き換えられます
-#define MyAppVersion GetFileVersion("..\dist\DenshiChobohozoSystem\DenshiChobohozoSystem.exe")
+; バージョン情報（build.pyで自動的に置き換えられる）
+#define MyAppVersion "v2.0.0"
 
 [Setup]
 ; アプリケーション情報
@@ -24,9 +23,9 @@ DefaultDirName={autopf}\{#MyAppNameEn}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 LicenseFile=
-OutputDir=installer\Output
+OutputDir=Output
 OutputBaseFilename={#MyAppNameEn}_{#MyAppVersion}_setup
-SetupIconFile=installer\icon.ico
+SetupIconFile=icon.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern

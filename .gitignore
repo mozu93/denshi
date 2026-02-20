@@ -126,8 +126,8 @@ shared_config.path
 # Build artifacts
 file_version_info.txt
 installer/Output/
-installer/*.exe
-installer/*.ico
+installer/tesseract-installer.exe
+installer/icon_preview.png
 
 # OCR debug files
 debug_ocr_image.png

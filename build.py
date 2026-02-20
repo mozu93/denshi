@@ -44,19 +44,19 @@ def print_header(message):
 
 def print_success(message):
     """成功メッセージを出力"""
-    print(f"{Color.OKGREEN}✓ {message}{Color.ENDC}")
+    print(f"{Color.OKGREEN}[OK] {message}{Color.ENDC}")
 
 def print_warning(message):
     """警告メッセージを出力"""
-    print(f"{Color.WARNING}⚠ {message}{Color.ENDC}")
+    print(f"{Color.WARNING}[WARNING] {message}{Color.ENDC}")
 
 def print_error(message):
     """エラーメッセージを出力"""
-    print(f"{Color.FAIL}✗ {message}{Color.ENDC}")
+    print(f"{Color.FAIL}[ERROR] {message}{Color.ENDC}")
 
 def print_info(message):
     """情報メッセージを出力"""
-    print(f"{Color.OKCYAN}ℹ {message}{Color.ENDC}")
+    print(f"{Color.OKCYAN}[INFO] {message}{Color.ENDC}")
 
 def check_dependencies():
     """必要な依存関係をチェック"""
