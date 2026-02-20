@@ -11,7 +11,7 @@ __version__ = "v2.0.0"
 __build_date__ = "2026-02-20"
 
 # GitHub Repository Information for update checking
-GITHUB_REPO_OWNER = "your-username"  # TODO: 実際のGitHubユーザー名に変更してください
+GITHUB_REPO_OWNER = "mozu93"
 GITHUB_REPO_NAME = "denshi"
 
 # Application Metadata
