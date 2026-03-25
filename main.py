@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFont
 from main_window import MainWindow
 from utils.ui_styles import apply_app_style
-from utils.constants import HARDCODED_ROOT_SAVE_DIRECTORY, HARDCODED_SHARED_CONFIG_PATH
+from utils.constants import HARDCODED_SHARED_CONFIG_PATH
 
 logger = logging.getLogger(__name__)
 

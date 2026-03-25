@@ -40,10 +40,10 @@ class SettingsDialog(QDialog):
         self.shared_config_path_layout = QHBoxLayout()
         self.shared_config_path_label = QLabel("共有設定ファイル(config.ini)のパス:")
         self.shared_config_path_edit = QLineEdit()
-        self.shared_config_path_edit.setReadOnly(True)  # 読み取り専用に設定
+        self.shared_config_path_edit.setReadOnly(True)
         self.shared_config_path_button = QPushButton("参照")
         self.shared_config_path_button.clicked.connect(self.browse_shared_config_path)
-        self.shared_config_path_button.setEnabled(False)  # 参照ボタンを無効化
+        self.shared_config_path_button.setEnabled(False)
         self.shared_config_path_layout.addWidget(self.shared_config_path_label)
         self.shared_config_path_layout.addWidget(self.shared_config_path_edit)
         self.shared_config_path_layout.addWidget(self.shared_config_path_button)
@@ -51,23 +51,21 @@ class SettingsDialog(QDialog):
 
         self.clear_shared_config_button = QPushButton("共有設定を解除")
         self.clear_shared_config_button.clicked.connect(self.clear_shared_config_path)
-        self.clear_shared_config_button.setEnabled(False)  # ボタンを無効化
+        self.clear_shared_config_button.setEnabled(False)
         shared_config_layout.addWidget(self.clear_shared_config_button)
 
         shared_config_group.setLayout(shared_config_layout)
         self.left_layout.addWidget(shared_config_group)
 
         # Root Save Directory
-        root_dir_group = QGroupBox("保存先設定（ハードコード）" if not test_mode else "保存先設定")
+        root_dir_group = QGroupBox("保存先設定")
         self.root_dir_group = root_dir_group
         root_dir_group_layout = QVBoxLayout()
         self.root_dir_layout = QHBoxLayout()
         self.root_dir_label = QLabel("ルート保存ディレクトリ:")
         self.root_dir_edit = QLineEdit()
-        self.root_dir_edit.setReadOnly(True)  # 読み取り専用に設定
         self.root_dir_button = QPushButton("参照")
         self.root_dir_button.clicked.connect(self.browse_root_dir)
-        self.root_dir_button.setEnabled(False)  # 参照ボタンを無効化
         self.root_dir_layout.addWidget(self.root_dir_label)
         self.root_dir_layout.addWidget(self.root_dir_edit)
         self.root_dir_layout.addWidget(self.root_dir_button)
@@ -207,15 +205,10 @@ class SettingsDialog(QDialog):
             self._enable_test_mode_ui()
 
     def _enable_test_mode_ui(self):
-        """テストモード時に共有設定・保存先設定を編集可能にする"""
+        """テストモード時に共有設定を編集可能にする"""
         self.shared_config_path_edit.setReadOnly(False)
         self.shared_config_path_button.setEnabled(True)
         self.clear_shared_config_button.setEnabled(True)
-        self.root_dir_edit.setReadOnly(False)
-        self.root_dir_button.setEnabled(True)
-        # 実際に保存されているパスを表示
-        actual_root = self.config_manager.get('Paths', 'root_save_directory', fallback=HARDCODED_ROOT_SAVE_DIRECTORY)
-        self.root_dir_edit.setText(actual_root)
 
     def _load_doc_type_table(self, table, section):
         """書類種別テーブルに設定セクションの内容を読み込む共通ヘルパー"""
@@ -237,11 +230,12 @@ class SettingsDialog(QDialog):
         return result
 
     def load_settings(self):
-        # 共有設定パスの読み込み - ハードコードされたパスを優先表示
+        # 共有設定パスの読み込み - ハードコードされたパスを表示
         self.shared_config_path_edit.setText(HARDCODED_SHARED_CONFIG_PATH)
 
-        # ルート保存ディレクトリ - ハードコードされたパスを表示
-        self.root_dir_edit.setText(HARDCODED_ROOT_SAVE_DIRECTORY)
+        # ルート保存ディレクトリ - 設定ファイルから読み込み、未設定ならデフォルト値を表示
+        root_dir = self.config_manager.get('Paths', 'root_save_directory', fallback=HARDCODED_ROOT_SAVE_DIRECTORY)
+        self.root_dir_edit.setText(root_dir)
 
         tesseract_path = self.config_manager.get_tesseract_path()
         self.tesseract_path_edit.setText(tesseract_path)
@@ -273,14 +267,12 @@ class SettingsDialog(QDialog):
 
     def save_settings(self):
         try:
-            if self.test_mode:
-                # テストモード: 入力された値を保存
-                root_dir = self.root_dir_edit.text().strip()
-                self.new_root_dir = root_dir if root_dir else HARDCODED_ROOT_SAVE_DIRECTORY
-                self.config_manager.set('Paths', 'root_save_directory', self.new_root_dir)
-            else:
-                # 通常モード: ハードコードされたパスを使用
-                self.new_root_dir = HARDCODED_ROOT_SAVE_DIRECTORY
+            root_dir = self.root_dir_edit.text().strip()
+            if not root_dir:
+                QMessageBox.warning(self, "入力エラー", "ルート保存ディレクトリを設定してください。")
+                return
+            self.new_root_dir = root_dir
+            self.config_manager.set('Paths', 'root_save_directory', self.new_root_dir)
 
             tesseract_path = self.tesseract_path_edit.text()
             self.config_manager.set_tesseract_path(tesseract_path)

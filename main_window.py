@@ -9,10 +9,7 @@ from models.ocr_processor import OcrProcessor
 from views.settings_dialog import SettingsDialog
 from views.help_dialog import show_help_dialog
 from views.startup_guide_dialog import show_startup_guide
-from utils.constants import (
-    HARDCODED_ROOT_SAVE_DIRECTORY,
-    DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE
-)
+from utils.constants import HARDCODED_ROOT_SAVE_DIRECTORY, DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE
 import os
 
 class MainWindow(QMainWindow):
@@ -39,10 +36,8 @@ class MainWindow(QMainWindow):
         font_size = self.config_manager.get_ui_font_size()
         self.apply_font_size(font_size)
 
-        # ハードコードされたルート保存ディレクトリを使用
-        root_save_directory = HARDCODED_ROOT_SAVE_DIRECTORY
-        self.config_manager.set('Paths', 'root_save_directory', root_save_directory)
-
+        # 設定ファイルからルート保存ディレクトリを読み込む（未設定ならデフォルト値）
+        root_save_directory = self.config_manager.get('Paths', 'root_save_directory', fallback=HARDCODED_ROOT_SAVE_DIRECTORY)
         self.metadata_manager = MetadataManager(root_save_directory)
 
         # 起動時に通し番号を再計算
@@ -66,6 +61,8 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("準備完了")
+        if not root_save_directory:
+            QTimer.singleShot(0, lambda: self._prompt_configure_root_dir())
         QTimer.singleShot(0, lambda: show_startup_guide(self.config_manager, self))
         QTimer.singleShot(100, lambda: OcrProcessor.warm_up(self.config_manager))
         QTimer.singleShot(200, lambda: self._check_for_updates())
@@ -139,12 +136,17 @@ class MainWindow(QMainWindow):
         self.test_mode = checked
         if checked:
             self.setWindowTitle("電子帳簿保存システム [テストモード]")
-            self.status_bar.showMessage("テストモード: 共有設定・保存先設定のハードコードが解除されています")
+            self.status_bar.showMessage("テストモード")
         else:
             self.setWindowTitle("電子帳簿保存システム")
-            self.config_manager.set('Paths', 'root_save_directory', HARDCODED_ROOT_SAVE_DIRECTORY)
-            self.metadata_manager.update_root_directory(HARDCODED_ROOT_SAVE_DIRECTORY)
-            self.status_bar.showMessage("テストモード終了: ハードコード設定に戻りました")
+            self.status_bar.showMessage("準備完了")
+
+    def _prompt_configure_root_dir(self):
+        QMessageBox.information(
+            self, "保存先の設定",
+            "ルート保存ディレクトリが設定されていません。\n設定画面からフォルダを選択してください。"
+        )
+        self.open_settings()
 
     def open_settings(self):
         dialog = SettingsDialog(self.config_manager, self.metadata_manager, self, test_mode=self.test_mode)

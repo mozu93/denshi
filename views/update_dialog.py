@@ -123,7 +123,7 @@ class UpdateDialog(QDialog):
         """スキップボタンクリック時の処理"""
         if self.skip_checkbox.isChecked():
             # スキップバージョンをconfig.iniに保存
-            self.config_manager.set_value('Update', 'skip_version', self.update_info.latest_version)
+            self.config_manager.set('Update', 'skip_version', self.update_info.latest_version)
             logger.info(f"バージョン {self.update_info.latest_version} をスキップしました")
             self.skip_version = True
 
@@ -140,7 +140,7 @@ def check_and_notify_update(parent, config_manager: ConfigManager):
     """
     try:
         # 起動時チェックが無効の場合はスキップ
-        check_enabled = config_manager.get_value('Update', 'check_on_startup', 'True') == 'True'
+        check_enabled = config_manager.get('Update', 'check_on_startup', fallback='True') == 'True'
         if not check_enabled:
             logger.info("起動時のアップデートチェックは無効です")
             return
@@ -155,7 +155,7 @@ def check_and_notify_update(parent, config_manager: ConfigManager):
             return
 
         # スキップバージョンのチェック
-        skip_version = config_manager.get_value('Update', 'skip_version', '')
+        skip_version = config_manager.get('Update', 'skip_version', fallback='')
         if skip_version and skip_version == update_info.latest_version:
             logger.info(f"バージョン {update_info.latest_version} はスキップ設定されています")
             _update_last_check_date(config_manager)
@@ -176,6 +176,6 @@ def _update_last_check_date(config_manager: ConfigManager):
     """最終チェック日時を更新"""
     try:
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        config_manager.set_value('Update', 'last_check_date', current_date)
+        config_manager.set('Update', 'last_check_date', current_date)
     except Exception as e:
         logger.warning(f"最終チェック日時の更新に失敗しました: {e}")

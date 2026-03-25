@@ -1,4 +1,4 @@
-# NASパス
+# NASパス（初期デフォルト値）
 HARDCODED_ROOT_SAVE_DIRECTORY = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存"
 HARDCODED_SHARED_CONFIG_PATH  = r"\\yc-nas01\Ycci共通\000全体業務\000職員共通\070電子帳簿保存法関係\電子帳簿保存\config.ini"
 

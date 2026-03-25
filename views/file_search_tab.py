@@ -32,14 +32,14 @@ class FileSearchTab(QWidget):
 
         main_layout = QVBoxLayout(self)
 
-        # スプリッターで検索条件と結果を分割
-        search_splitter = QSplitter(Qt.Orientation.Vertical)
+        # スプリッターで検索条件（左）と結果（右）を横並びに分割
+        search_splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Search Conditions
+        # Search Conditions（左）
         search_group = self._create_search_group()
         search_splitter.addWidget(search_group)
 
-        # Search Results
+        # Search Results（右）
         results_group = self._create_results_group()
         search_splitter.addWidget(results_group)
 
@@ -48,7 +48,7 @@ class FileSearchTab(QWidget):
         if saved_sizes and len(saved_sizes) == 2:
             search_splitter.setSizes(saved_sizes)
         else:
-            search_splitter.setSizes([200, 1000])  # 検索条件:200, 結果:1000（2倍に拡大）
+            search_splitter.setSizes([400, 800])  # 検索条件:1/3, 結果:2/3
 
         self.search_splitter = search_splitter
         main_layout.addWidget(search_splitter)
@@ -60,15 +60,15 @@ class FileSearchTab(QWidget):
         """Creates the search conditions group box."""
         search_group = QGroupBox("検索条件")
 
-        # 横幅を50%に制限するためのコンテナレイアウト
-        container_layout = QHBoxLayout()
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(10, 10, 10, 10)
+        container_layout.setSpacing(5)
 
-        # 検索条件フォームのウィジェット
+        # 検索条件フォームのウィジェット（左カラム全体を使用）
         form_widget = QWidget()
-        form_widget.setMaximumWidth(600)  # 最大横幅を制限
         layout = QVBoxLayout(form_widget)
-        layout.setContentsMargins(10, 10, 10, 0)  # 下部マージンを0に
-        layout.setSpacing(5)  # レイアウト間のスペーシングを縮小
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
 
         # Search fields
         self.year_combo = QComboBox()
@@ -161,9 +161,8 @@ class FileSearchTab(QWidget):
 
         layout.addLayout(button_layout)
 
-        # コンテナに追加
         container_layout.addWidget(form_widget)
-        container_layout.addStretch()  # 右側にスペースを追加
+        container_layout.addStretch()
 
         search_group.setLayout(container_layout)
         return search_group
@@ -251,11 +250,17 @@ class FileSearchTab(QWidget):
 
         header = self.results_table.horizontalHeader()
 
-        # オートフィット設定 - 内容に合わせて列幅を自動調整
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        # 通し番号・発行日・金額・編集ボタン列は内容に合わせて自動調整
+        for col in [1, 2, 3, 7]:
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
 
-        # メモ列（列6）のみストレッチモードで残りスペースを使用
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        # 取引先名・書類種別列はストレッチで残りスペースを均等に使用
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+
+        # メモ列は固定幅（小さめ）
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        self.results_table.setColumnWidth(6, 240)
 
         self.results_table.setWordWrap(True)
 

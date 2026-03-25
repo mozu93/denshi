@@ -133,7 +133,6 @@ class FileRegistrationTab(QWidget):
         self.pdf_preview_label = SelectablePdfPreviewLabel()
 
         self.ocr_instruction_label = QLabel("入力したい項目を選択後、右のPDF上で範囲をドラッグしてOCRで読み取れます。")
-        self.year_edit = QLineEdit()
         self.transaction_type_expenditure_radio = QRadioButton("支出情報")
         self.transaction_type_income_radio = QRadioButton("収入情報")
         self.transaction_type_other_org_radio = QRadioButton("その他団体")
@@ -178,7 +177,6 @@ class FileRegistrationTab(QWidget):
         transaction_radio_layout.addWidget(self.transaction_type_expenditure_radio)
         transaction_radio_layout.addWidget(self.transaction_type_income_radio)
         transaction_radio_layout.addWidget(self.transaction_type_other_org_radio)
-        form_layout.addRow("年:", self.year_edit)
         form_layout.addRow("取引区分:", transaction_radio_layout)
         form_layout.addRow("書類種別:", self.document_type_combo)
 
@@ -253,16 +251,14 @@ class FileRegistrationTab(QWidget):
         self.zoom_out_action.triggered.connect(self.zoom_out)
         self.reset_zoom_action.triggered.connect(self.reset_zoom)
 
-        self.year_edit.installEventFilter(self)
         self.issue_date_edit.installEventFilter(self)
         self.client_name_edit.installEventFilter(self)
         self.amount_edit.installEventFilter(self)
 
-        self.year_edit.textChanged.connect(self.check_save_button_state)
         self.issue_date_edit.textChanged.connect(self.check_save_button_state)
         self.client_name_edit.textChanged.connect(self.check_save_button_state)
         self.amount_edit.textChanged.connect(self.check_save_button_state)
-        self.year_edit.textChanged.connect(self.update_doc_id)
+        self.issue_date_edit.textChanged.connect(self.update_doc_id)
         self.document_type_combo.currentIndexChanged.connect(self.update_doc_id)
         self.issue_date_edit.textChanged.connect(self.update_filename_preview)
         self.client_name_edit.textChanged.connect(self.update_filename_preview)
@@ -279,10 +275,6 @@ class FileRegistrationTab(QWidget):
         """Load last used inputs and set initial UI state."""
         self.transaction_type_expenditure_radio.setChecked(True)
         self.update_document_types()
-
-        last_year = self.config_manager.get_last_input('year')
-        if last_year:
-            self.year_edit.setText(last_year)
 
         last_doc_type_index = self.config_manager.get_last_input('doc_type_index')
         if last_doc_type_index is not None:
@@ -318,26 +310,18 @@ class FileRegistrationTab(QWidget):
             first_file_folder = os.path.dirname(files[0])
             self.config_manager.set_last_folder_path(first_file_folder)
 
-            # 選択したフォルダの処理済ファイルをクリーンアップ
-            try:
-                deleted_count = self.processed_file_manager.cleanup_old_files(first_file_folder)
-                if deleted_count > 0:
-                    logger.info(f"30日経過した処理済ファイル {deleted_count}件を削除しました")
-            except Exception as e:
-                logger.warning(f"古いファイルの削除でエラー: {e}")
-
             # ファイルをリストに追加
             for file in files:
                 self.add_file_to_list(file)
 
     def eventFilter(self, source, event):
         if event.type() == QEvent.Type.FocusIn:
-            if source in [self.year_edit, self.issue_date_edit, self.client_name_edit, self.amount_edit]:
+            if source in [self.issue_date_edit, self.client_name_edit, self.amount_edit]:
                 self.set_active_field(source)
         return super().eventFilter(source, event)
 
     def set_active_field(self, field):
-        for f in [self.year_edit, self.issue_date_edit, self.client_name_edit, self.amount_edit]:
+        for f in [self.issue_date_edit, self.client_name_edit, self.amount_edit]:
             f.setStyleSheet("")
         field.setStyleSheet("background-color: #e0e0ff;")
         self.active_field = field
@@ -515,15 +499,15 @@ class FileRegistrationTab(QWidget):
         self.update_doc_id()
 
     def update_doc_id(self):
-        year_raw = self.year_edit.text()
-        if not year_raw:
-            self.doc_id_label.setText("(年未入力)")
+        issue_date = self.issue_date_edit.text()
+        if len(issue_date) < 4:
+            self.doc_id_label.setText("(発行日未入力)")
             return
         try:
-            year_int = int(year_raw)
+            year_int = int(issue_date[:4])
             formatted_year = f"{year_int}年"
         except ValueError:
-            self.doc_id_label.setText("(年形式エラー)")
+            self.doc_id_label.setText("(発行日形式エラー)")
             return
 
         transaction_type = self._get_transaction_type()
@@ -554,12 +538,11 @@ class FileRegistrationTab(QWidget):
         self.filename_preview_label.setText(filename)
 
     def check_save_button_state(self):
-        year = self.year_edit.text()
         issue_date = self.issue_date_edit.text()
         client_name = self.client_name_edit.text()
         amount = self.amount_edit.text()
 
-        enabled = bool(year and issue_date and client_name and amount)
+        enabled = bool(issue_date and client_name and amount)
         self.save_button.setEnabled(enabled)
 
     def save_and_next(self):
@@ -570,7 +553,6 @@ class FileRegistrationTab(QWidget):
             return
         source_path = current_item.text()
 
-        year_raw = self.year_edit.text()
         issue_date = self.issue_date_edit.text()
         client_name_raw = self.client_name_edit.text()
         amount_raw = self.amount_edit.text()
@@ -589,11 +571,11 @@ class FileRegistrationTab(QWidget):
         sanitized_client_name = re.sub(r'[\\/:*?"<>|]', '', client_name_raw)
 
         try:
-            year_int = int(year_raw)
+            year_int = int(issue_date[:4])
             formatted_year = f"{year_int}年"
-        except ValueError:
+        except (ValueError, IndexError):
             self._play_sound('error')
-            QMessageBox.warning(self, "入力エラー", "年は半角数字で入力してください。")
+            QMessageBox.warning(self, "入力エラー", "発行日の形式が正しくありません。(YYYYMMDD)")
             return
 
         new_filename = f"{doc_id}_{issue_date}_{extracted_amount}_{sanitized_client_name}.pdf"
@@ -611,7 +593,6 @@ class FileRegistrationTab(QWidget):
             f"以下の内容で保存しますか？\n\n"
             f"元ファイル: {os.path.basename(source_path)}\n"
             f"保存先: {target_path}\n\n"
-            f"年: {year_raw}\n"
             f"取引区分: {transaction_type}\n"
             f"書類種別: {doc_type}\n"
             f"発行日: {issue_date}\n"
@@ -655,9 +636,6 @@ class FileRegistrationTab(QWidget):
                     source_file_path = current_item.data(Qt.ItemDataRole.UserRole)
                     if source_file_path and os.path.exists(source_file_path):
                         moved_path = self.processed_file_manager.move_to_processed_folder(source_file_path)
-                        # 30日経過後のファイル削除処理も実行
-                        source_folder = os.path.dirname(source_file_path)
-                        self.processed_file_manager.cleanup_old_files(source_folder)
                     else:
                         logger.warning(f"ソースファイルが見つかりません: {source_file_path}")
                 except Exception as move_error:
@@ -670,7 +648,6 @@ class FileRegistrationTab(QWidget):
                 self.clear_input_fields()
                 self.select_next_file()
 
-                self.config_manager.set_last_input('year', year_raw)
                 self.config_manager.set_last_input('doc_type_index', str(self.document_type_combo.currentIndex()))
 
             except Exception as e:
