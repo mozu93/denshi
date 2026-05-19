@@ -24,19 +24,15 @@ datas = [
 # PyMuPDFのデータファイルを含める
 datas += collect_data_files('fitz')
 
-# numpy / pandas / pytz のすべてを収集（メタデータ含む）
+# numpy / pandas のすべてを収集（バイナリ・メタデータ含む）
 numpy_datas, numpy_binaries, numpy_hiddenimports = collect_all('numpy')
 pandas_datas, pandas_binaries, pandas_hiddenimports = collect_all('pandas')
-pytz_datas, pytz_binaries, pytz_hiddenimports = collect_all('pytz')
 
 datas += numpy_datas
 datas += pandas_datas
-datas += pytz_datas
 
-# importlib.metadata が参照するパッケージメタデータ（.dist-info）を明示的にコピー
+# pytz は collect_all を使わず dist-info のみコピー（collect_all との競合を避ける）
 datas += copy_metadata('pytz')
-datas += copy_metadata('pandas')
-datas += copy_metadata('numpy')
 
 # 隠れたインポートの明示的な指定
 hiddenimports = [
@@ -59,6 +55,7 @@ hiddenimports = [
     'jaconv',
     'send2trash',
     'filelock',
+    'pytz',
 ]
 
 # PyQt6の全サブモジュールを収集
@@ -67,9 +64,9 @@ hiddenimports += collect_submodules('PyQt6')
 a = Analysis(
     ['main.py'],
     pathex=[spec_root],
-    binaries=numpy_binaries + pandas_binaries + pytz_binaries,
+    binaries=numpy_binaries + pandas_binaries,
     datas=datas,
-    hiddenimports=hiddenimports + numpy_hiddenimports + pandas_hiddenimports + pytz_hiddenimports,
+    hiddenimports=hiddenimports + numpy_hiddenimports + pandas_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
