@@ -6,7 +6,7 @@ PyInstaller設定ファイル - 電子帳簿保存システム
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all, copy_metadata
 
 block_cipher = None
 
@@ -32,6 +32,11 @@ pytz_datas, pytz_binaries, pytz_hiddenimports = collect_all('pytz')
 datas += numpy_datas
 datas += pandas_datas
 datas += pytz_datas
+
+# importlib.metadata が参照するパッケージメタデータ（.dist-info）を明示的にコピー
+datas += copy_metadata('pytz')
+datas += copy_metadata('pandas')
+datas += copy_metadata('numpy')
 
 # 隠れたインポートの明示的な指定
 hiddenimports = [
