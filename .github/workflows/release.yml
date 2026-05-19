@@ -1,0 +1,94 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements_build.txt
+
+      - name: Get version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = python -c "from VERSION import __version__; print(__version__)"
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Download Tesseract installer
+        shell: pwsh
+        run: |
+          try {
+            $headers = @{ "User-Agent" = "GitHub-Actions" }
+            $release = Invoke-RestMethod `
+              -Uri "https://api.github.com/repos/UB-Mannheim/tesseract/releases/latest" `
+              -Headers $headers
+            $asset = $release.assets |
+              Where-Object { $_.name -match "tesseract-ocr-w64-setup.*\.exe$" } |
+              Select-Object -First 1
+            if (-not $asset) {
+              $asset = $release.assets |
+                Where-Object { $_.name -match ".*setup.*\.exe$" } |
+                Select-Object -First 1
+            }
+            if ($asset) {
+              Write-Host "Downloading: $($asset.name)"
+              Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "installer\tesseract-installer.exe"
+              Write-Host "Download complete"
+            } else {
+              throw "No matching Tesseract installer found in release assets"
+            }
+          } catch {
+            Write-Warning "Tesseract download failed: $_"
+            Write-Warning "Creating minimal placeholder (Tesseract option will not work)"
+            [System.IO.File]::WriteAllBytes(
+              "installer\tesseract-installer.exe",
+              [byte[]]@(0x4D, 0x5A, 0x00, 0x00)
+            )
+          }
+
+      - name: Build executable and installer
+        shell: pwsh
+        run: python build.py
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "電子帳簿保存システム ${{ steps.ver.outputs.VERSION }}"
+          body: |
+            ## 電子帳簿保存システム ${{ steps.ver.outputs.VERSION }}
+
+            ### インストール方法
+            1. 下記の `DenshiChobohozoSystem_${{ steps.ver.outputs.VERSION }}_setup.exe` をダウンロード
+            2. ダウンロードしたファイルをダブルクリックして実行
+            3. 画面の指示に従ってインストール
+
+            ### 注意事項
+            - OCR機能を使用するには Tesseract OCR が必要です
+            - インストーラー実行時に「Tesseract OCRをインストールする」オプションを選択できます
+            - Tesseract OCR インストール済みの場合はオプションのチェックが自動で外れます
+
+            ※ 管理者権限が必要です。
+          files: installer/Output/DenshiChobohozoSystem_${{ steps.ver.outputs.VERSION }}_setup.exe
+          draft: false
+          prerelease: false
