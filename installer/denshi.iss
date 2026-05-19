@@ -8,7 +8,7 @@
 #define MyAppExeName "DenshiChobohozoSystem.exe"
 
 ; バージョン情報（build.pyで自動的に置き換えられる）
-#define MyAppVersion "v2.0.0"
+#define MyAppVersion "v2.1.0"
 
 [Setup]
 ; アプリケーション情報
@@ -41,6 +41,7 @@ Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 [Tasks]
 Name: "desktopicon"; Description: "デスクトップアイコンを作成する(&D)"; GroupDescription: "追加のアイコン:"
 Name: "quicklaunchicon"; Description: "クイック起動アイコンを作成する(&Q)"; GroupDescription: "追加のアイコン:"; Flags: unchecked
+Name: "installtesseract"; Description: "Tesseract OCRをインストールする（OCR機能に必要・既にインストール済みの場合は不要）"; GroupDescription: "オプションコンポーネント:"
 
 ; ファイルのインストール
 [Files]
@@ -50,8 +51,8 @@ Source: "..\dist\{#MyAppNameEn}\*"; DestDir: "{app}"; Flags: ignoreversion recur
 ; 初期設定ファイル（ユーザーデータディレクトリに配置）
 Source: "..\config.ini"; DestDir: "{userappdata}\{#MyAppNameEn}"; Flags: onlyifdoesntexist uninsneveruninstall
 
-; Tesseract OCRインストーラー（同梱する場合）
-Source: "tesseract-installer.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+; Tesseract OCRインストーラー（選択時のみコピー）
+Source: "tesseract-installer.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Tasks: installtesseract
 
 ; アイコンの作成
 [Icons]
@@ -62,8 +63,8 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Fil
 
 ; 実行処理
 [Run]
-; Tesseract OCRの自動インストール（オプション）
-Filename: "{tmp}\tesseract-installer.exe"; Parameters: "/VERYSILENT /NORESTART /DIR=""{autopf}\Tesseract-OCR"""; StatusMsg: "Tesseract OCRをインストールしています..."; Flags: waituntilterminated
+; Tesseract OCRのインストール（タスク選択時のみ）
+Filename: "{tmp}\tesseract-installer.exe"; Parameters: "/VERYSILENT /NORESTART /DIR=""{autopf}\Tesseract-OCR"""; StatusMsg: "Tesseract OCRをインストールしています..."; Flags: waituntilterminated; Tasks: installtesseract
 
 ; インストール完了後にアプリケーションを起動（ユーザーが選択可能）
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
@@ -82,13 +83,39 @@ japanese.WelcomeLabel1=ようこそ、[name] セットアップウィザード�
 japanese.WelcomeLabel2=このプログラムは、電子帳簿保存法に対応した電子取引データの管理を支援します。%n%n続行する前に、他のすべてのアプリケーションを終了してください。
 
 [Code]
+// Tesseractが既にインストールされているか確認
+function IsTesseractInstalled(): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{autopf}\Tesseract-OCR\tesseract.exe'))
+         or FileExists('C:\Program Files\Tesseract-OCR\tesseract.exe')
+         or FileExists('C:\Program Files (x86)\Tesseract-OCR\tesseract.exe');
+end;
+
 // インストール前のチェック
 function InitializeSetup(): Boolean;
 begin
   Result := True;
+end;
 
-  // .NET Frameworkやその他の依存関係のチェックをここに追加可能
-
+// タスクページ表示時にTesseract既存インストールを検出してチェックを外す
+procedure CurPageChanged(CurPageID: Integer);
+var
+  i: Integer;
+begin
+  if CurPageID = wpSelectTasks then
+  begin
+    if IsTesseractInstalled() then
+    begin
+      for i := 0 to WizardForm.TasksList.Items.Count - 1 do
+      begin
+        if Pos('Tesseract', WizardForm.TasksList.Items[i]) > 0 then
+        begin
+          WizardForm.TasksList.Checked[i] := False;
+          Break;
+        end;
+      end;
+    end;
+  end;
 end;
 
 // アンインストール時の確認

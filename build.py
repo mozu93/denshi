@@ -222,6 +222,13 @@ def create_installer():
         print_info("インストーラー作成をスキップします")
         return True  # インストーラーなしでも成功とみなす
 
+    # .issファイルのバージョンを自動更新
+    iss_content = iss_file.read_text(encoding='utf-8')
+    import re
+    iss_content = re.sub(r'#define MyAppVersion "v[\d.]+"', f'#define MyAppVersion "{__version__}"', iss_content)
+    iss_file.write_text(iss_content, encoding='utf-8')
+    print_success(f".issファイルのバージョンを {__version__} に更新しました")
+
     print_info(f"Inno Setup Compiler: {iscc_exe}")
     print_info("インストーラーを作成しています...\n")
 
