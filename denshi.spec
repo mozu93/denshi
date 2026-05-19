@@ -24,12 +24,14 @@ datas = [
 # PyMuPDFのデータファイルを含める
 datas += collect_data_files('fitz')
 
-# numpy と pandas のすべてを収集
+# numpy / pandas / pytz のすべてを収集（メタデータ含む）
 numpy_datas, numpy_binaries, numpy_hiddenimports = collect_all('numpy')
 pandas_datas, pandas_binaries, pandas_hiddenimports = collect_all('pandas')
+pytz_datas, pytz_binaries, pytz_hiddenimports = collect_all('pytz')
 
 datas += numpy_datas
 datas += pandas_datas
+datas += pytz_datas
 
 # 隠れたインポートの明示的な指定
 hiddenimports = [
@@ -60,9 +62,9 @@ hiddenimports += collect_submodules('PyQt6')
 a = Analysis(
     ['main.py'],
     pathex=[spec_root],
-    binaries=numpy_binaries + pandas_binaries,
+    binaries=numpy_binaries + pandas_binaries + pytz_binaries,
     datas=datas,
-    hiddenimports=hiddenimports + numpy_hiddenimports + pandas_hiddenimports,
+    hiddenimports=hiddenimports + numpy_hiddenimports + pandas_hiddenimports + pytz_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
