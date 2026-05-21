@@ -17,6 +17,8 @@ from PIL import Image, ImageQt
 
 from models.pdf_processor import PdfProcessor
 from models.ocr_processor import OcrProcessor
+from models.pdf_text_extractor import PdfTextExtractor
+from models.learning_manager import LearningManager
 from utils.date_converter import DateConverter
 from utils.validator import Validator
 from utils.file_hasher import get_file_hash
@@ -88,6 +90,12 @@ class FileRegistrationTab(QWidget):
         self.validator = Validator()
         self.processed_file_manager = ProcessedFileManager()
         self.client_manager = ClientManager(config_manager)
+        self.pdf_text_extractor = PdfTextExtractor()
+        _learning_path = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'learning_data.json')
+        )
+        self.learning_manager = LearningManager(_learning_path)
+        self.last_ocr_regions: dict = {}  # field_name -> (x_pct, y_pct, w_pct, h_pct)
 
         self._create_widgets()
         self._setup_layout()
@@ -149,6 +157,10 @@ class FileRegistrationTab(QWidget):
         self.filename_preview_label = QLabel("(ファイル名プレビュー)")
         self.save_button = QPushButton("保存して次へ")
 
+        self.extraction_status_label = QLabel("")
+        self.extraction_status_label.setWordWrap(True)
+        self.auto_fill_button = QPushButton("自動入力")
+
     def _setup_layout(self):
         """Set up the layout of the tab."""
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -173,6 +185,14 @@ class FileRegistrationTab(QWidget):
         form_layout = QFormLayout()
         self.ocr_instruction_label.setWordWrap(True)
         form_layout.addRow(self.ocr_instruction_label)
+
+        status_widget = QWidget()
+        status_layout_h = QHBoxLayout(status_widget)
+        status_layout_h.setContentsMargins(0, 0, 0, 0)
+        status_layout_h.addWidget(self.extraction_status_label, 1)
+        status_layout_h.addWidget(self.auto_fill_button)
+        form_layout.addRow(status_widget)
+
         transaction_radio_layout = QHBoxLayout()
         transaction_radio_layout.addWidget(self.transaction_type_expenditure_radio)
         transaction_radio_layout.addWidget(self.transaction_type_income_radio)
@@ -250,6 +270,7 @@ class FileRegistrationTab(QWidget):
         self.zoom_in_action.triggered.connect(self.zoom_in)
         self.zoom_out_action.triggered.connect(self.zoom_out)
         self.reset_zoom_action.triggered.connect(self.reset_zoom)
+        self.auto_fill_button.clicked.connect(self._trigger_auto_extract)
 
         self.issue_date_edit.installEventFilter(self)
         self.client_name_edit.installEventFilter(self)
@@ -364,6 +385,7 @@ class FileRegistrationTab(QWidget):
     def on_file_selection_changed(self, current, previous):
         """Handle file selection changes - update both PDF preview and document ID."""
         self.display_pdf_preview(current, previous)
+        self._try_auto_extract(current)
         self.update_doc_id()
 
     def display_pdf_preview(self, current, previous):
@@ -474,14 +496,209 @@ class FileRegistrationTab(QWidget):
             text = ""
 
         if self.active_field is self.issue_date_edit:
-            converted_date = self.date_converter.to_seireki(text)
-            self.active_field.setText(converted_date)
+            text = self.date_converter.to_seireki(text)
+            self.active_field.setText(text)
         elif self.active_field is self.amount_edit:
-            normalized_amount = self.validator._normalize_amount_string(text)
-            self.active_field.setText(normalized_amount)
+            text = self.validator._normalize_amount_string(text)
+            self.active_field.setText(text)
         else:
             self.active_field.setText(text)
         self.update_filename_preview()
+
+        # 学習: OCR領域をページ比率で記録し、取引先が判明していれば即座に保存
+        if text:
+            field_name = self._field_to_name(self.active_field)
+            if field_name:
+                page_w = fitz_pixmap_high_res.width
+                page_h = fitz_pixmap_high_res.height
+                region_pct = (x / page_w, y / page_h, w / page_w, h / page_h)
+                self.last_ocr_regions[field_name] = region_pct
+                issuer = self.client_name_edit.text().strip()
+                if issuer:
+                    self.learning_manager.learn_ocr_region(issuer, field_name, region_pct)
+
+    def _try_auto_extract(self, item):
+        """テキストPDFから帳票情報を自動抽出して空フィールドに入力する"""
+        if item is None:
+            self.extraction_status_label.setText("")
+            return
+
+        file_path = item.text()
+        try:
+            result = self.pdf_text_extractor.extract(file_path)
+        except Exception as e:
+            logger.warning(f"自動抽出エラー: {e}")
+            self.extraction_status_label.setText("自動抽出に失敗しました。")
+            self.extraction_status_label.setStyleSheet("color: #c0392b;")
+            return
+
+        if not result.is_text_pdf:
+            self.extraction_status_label.setText(
+                "スキャンPDF: OCRまたは手動で入力してください。"
+            )
+            self.extraction_status_label.setStyleSheet("color: #888;")
+            return
+
+        threshold = PdfTextExtractor.CONFIDENCE_THRESHOLD
+        filled = []
+
+        if (not self.issue_date_edit.text()
+                and result.issue_date
+                and result.field_confidences.get('issue_date', 0) >= threshold):
+            self.issue_date_edit.setText(result.issue_date)
+            filled.append("発行日")
+
+        if (not self.amount_edit.text()
+                and result.amount
+                and result.field_confidences.get('amount', 0) >= threshold):
+            self.amount_edit.setText(str(result.amount))
+            filled.append("金額")
+
+        if (not self.client_name_edit.text()
+                and result.client_name
+                and result.field_confidences.get('client_name', 0) >= threshold):
+            self.client_name_edit.setText(result.client_name)
+            filled.append("取引先")
+
+        # 書類種別：コンボボックスのアイテムにキーワードが含まれるか検索
+        if result.doc_type_hint and result.field_confidences.get('doc_type', 0) >= threshold:
+            for i in range(self.document_type_combo.count()):
+                if result.doc_type_hint in self.document_type_combo.itemText(i):
+                    self.document_type_combo.setCurrentIndex(i)
+                    filled.append("書類種別")
+                    break
+
+        # 学習データの適用（取引先名が判明している場合）
+        issuer = self.client_name_edit.text().strip()
+        learned_filled = self._apply_learning(file_path, issuer)
+        filled.extend(learned_filled)
+
+        if filled:
+            self.extraction_status_label.setText(f"自動入力: {', '.join(filled)}")
+            self.extraction_status_label.setStyleSheet("color: #2a7a2a;")
+        else:
+            self.extraction_status_label.setText(
+                "テキストPDFですが、情報を自動抽出できませんでした。"
+            )
+            self.extraction_status_label.setStyleSheet("color: #888;")
+
+    def _trigger_auto_extract(self):
+        """「自動入力」ボタン押下時：フィールドをクリアして再抽出する"""
+        self.clear_input_fields()
+        self.last_ocr_regions = {}
+        self.extraction_status_label.setText("")
+        self._try_auto_extract(self.file_list_widget.currentItem())
+
+    def _apply_learning(self, file_path: str, issuer: str) -> list[str]:
+        """
+        学習データを参照して書類種別とOCR領域を適用する。
+        空フィールドのみ対象。適用したフィールド名のリストを返す。
+        """
+        if not issuer:
+            return []
+        suggestion = self.learning_manager.get_suggestion(issuer)
+        if not suggestion:
+            return []
+
+        filled = []
+
+        # 書類種別・取引区分の適用
+        learned_doc_type = suggestion.get("doc_type")
+        learned_tx_type = suggestion.get("transaction_type")
+        if learned_doc_type and learned_tx_type:
+            # 取引区分ラジオボタンを先に設定（コンボ内容が変わるため）
+            from utils.constants import CATEGORY_EXPENDITURE, CATEGORY_INCOME
+            if learned_tx_type == CATEGORY_EXPENDITURE:
+                self.transaction_type_expenditure_radio.setChecked(True)
+            elif learned_tx_type == CATEGORY_INCOME:
+                self.transaction_type_income_radio.setChecked(True)
+            else:
+                self.transaction_type_other_org_radio.setChecked(True)
+            self.update_document_types()
+
+            for i in range(self.document_type_combo.count()):
+                if self.document_type_combo.itemText(i) == learned_doc_type:
+                    self.document_type_combo.setCurrentIndex(i)
+                    filled.append(f"書類種別(学習)")
+                    break
+
+        # 学習済みOCR領域の自動適用
+        ocr_regions = suggestion.get("ocr_regions", {})
+        if ocr_regions:
+            ocr_filled = self._apply_learned_ocr(file_path, ocr_regions)
+            filled.extend(ocr_filled)
+
+        return filled
+
+    def _apply_learned_ocr(self, file_path: str, regions: dict) -> list[str]:
+        """
+        学習済みOCR領域を使って空フィールドをOCRで自動入力する。
+        適用したフィールド名のリストを返す。
+        """
+        field_map = {
+            'issue_date': self.issue_date_edit,
+            'amount': self.amount_edit,
+            'client_name': self.client_name_edit,
+        }
+        # 対象フィールドが全て入力済みなら早期リターン
+        target_fields = {k: v for k, v in field_map.items() if k in regions and not v.text()}
+        if not target_fields:
+            return []
+
+        pdf_processor = PdfProcessor(file_path)
+        if not pdf_processor.open():
+            return []
+        fitz_pixmap = pdf_processor.get_page_as_pixmap(0, scale_factor=self.ocr_scale_factor)
+        pdf_processor.close()
+        if not fitz_pixmap:
+            return []
+
+        qimage = QImage(
+            fitz_pixmap.samples, fitz_pixmap.width, fitz_pixmap.height,
+            fitz_pixmap.stride, QImage.Format.Format_RGB888
+        )
+        pil_image = ImageQt.fromqimage(qimage)
+        pw, ph = fitz_pixmap.width, fitz_pixmap.height
+
+        filled = []
+        for field_name, field_widget in target_fields.items():
+            region = regions.get(field_name)
+            if not region or len(region) != 4:
+                continue
+            x = max(0, int(region[0] * pw))
+            y = max(0, int(region[1] * ph))
+            w = min(int(region[2] * pw), pw - x)
+            h = min(int(region[3] * ph), ph - y)
+            if w <= 0 or h <= 0:
+                continue
+
+            cropped = pil_image.crop((x, y, x + w, y + h))
+            try:
+                ocr_results = OcrProcessor(cropped, self.config_manager).get_text_and_boxes()
+                text = "".join(r['text'] for r in ocr_results) if ocr_results else ""
+                if not text:
+                    continue
+                if field_widget is self.issue_date_edit:
+                    text = self.date_converter.to_seireki(text)
+                elif field_widget is self.amount_edit:
+                    text = self.validator._normalize_amount_string(text)
+                if text:
+                    field_widget.setText(text)
+                    filled.append(f"{field_name}(OCR学習)")
+            except Exception as e:
+                logger.warning(f"学習済みOCR領域の適用エラー ({field_name}): {e}")
+
+        return filled
+
+    def _field_to_name(self, field) -> str | None:
+        """アクティブフィールドを学習キー名に変換する"""
+        if field is self.issue_date_edit:
+            return 'issue_date'
+        if field is self.amount_edit:
+            return 'amount'
+        if field is self.client_name_edit:
+            return 'client_name'
+        return None
 
     def update_document_types(self):
         self.document_type_combo.clear()
@@ -629,6 +846,12 @@ class FileRegistrationTab(QWidget):
                 }
                 self.metadata_manager.add_entry(formatted_year, metadata)
 
+                # 学習: 書類種別・取引区分・OCR領域を記録
+                self.learning_manager.learn_from_save(
+                    client_name_raw, doc_type, transaction_type, self.last_ocr_regions
+                )
+                self.last_ocr_regions = {}
+
                 QMessageBox.information(self, "成功", f"ファイルを保存しました。\n{target_path}")
 
                 # 元ファイルを処理済フォルダに移動
@@ -741,6 +964,7 @@ class FileRegistrationTab(QWidget):
         apply_small_button_style(self.reload_doc_id_button)
         apply_small_button_style(self.register_client_button)
         apply_small_button_style(self.recall_client_button)
+        apply_small_button_style(self.auto_fill_button)
 
         # リストウィジェット
         apply_list_widget_style(self.file_list_widget)

@@ -1,6 +1,7 @@
 PyQt6
 PyMuPDF
 pytesseract
+pdfplumber
 jaconv
 pandas
 send2trash
