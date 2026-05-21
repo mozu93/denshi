@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import jaconv
-import pdfplumber
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +51,7 @@ class PdfTextExtractor:
 
     def extract(self, pdf_path: str) -> ExtractionResult:
         """PDFを解析して帳票情報を返す。テキスト抽出できない場合は is_text_pdf=False を返す。"""
+        import pdfplumber  # 初回PDF処理時にのみインポート（起動時間短縮）
         result = ExtractionResult()
         try:
             with pdfplumber.open(pdf_path) as pdf:

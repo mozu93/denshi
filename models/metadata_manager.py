@@ -1,4 +1,3 @@
-import pandas as pd
 import os
 import uuid
 import re
@@ -57,6 +56,7 @@ class MetadataManager:
     # --- CRUD / Search operations ---
 
     def add_entry(self, year_nendo, data):
+        import pandas as pd
         if not isinstance(data, dict) or 'doc_id' not in data:
             raise ValueError("追加するデータが無効です。")
 
@@ -105,6 +105,7 @@ class MetadataManager:
     def search_entries(self, year_nendo, transaction_category=None, doc_type=None,
                        other_org_subfolder=None, client_name=None, date_from=None,
                        date_to=None, amount_from=None, amount_to=None, memo=None):
+        import pandas as pd
         logger.debug(f"search_entries - 開始 year_nendo={year_nendo}")
         df = self.load_df(year_nendo)
         if df.empty:
@@ -184,6 +185,7 @@ class MetadataManager:
         return file_path
 
     def update_entry(self, original_year, record_id, new_data):
+        import pandas as pd
         # 1. Load original data
         df_original = self.load_df(original_year)
         if df_original.empty:

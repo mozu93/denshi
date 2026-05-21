@@ -2,7 +2,6 @@ import os
 import re
 import uuid
 import logging
-import pandas as pd
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -100,6 +99,7 @@ class FileScanner:
     def rebuild_index(self):
         """Scans all managed directories, parses filenames, and overwrites the index.csv for each year.
         Preserves memo data from existing index.csv if available."""
+        import pandas as pd
         for year_nendo_dir in os.listdir(self.root_path):
             year_path = os.path.join(self.root_path, year_nendo_dir)
             if not os.path.isdir(year_path) or not re.match(r'^\d{4}年$', year_nendo_dir):

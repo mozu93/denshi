@@ -11,6 +11,7 @@ from views.help_dialog import show_help_dialog
 from views.startup_guide_dialog import show_startup_guide
 from utils.constants import HARDCODED_ROOT_SAVE_DIRECTORY, DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE
 import os
+import threading
 
 class MainWindow(QMainWindow):
     def __init__(self, config_file, parent=None):
@@ -64,7 +65,11 @@ class MainWindow(QMainWindow):
         if not root_save_directory:
             QTimer.singleShot(0, lambda: self._prompt_configure_root_dir())
         QTimer.singleShot(0, lambda: show_startup_guide(self.config_manager, self))
-        QTimer.singleShot(100, lambda: OcrProcessor.warm_up(self.config_manager))
+        QTimer.singleShot(100, lambda: threading.Thread(
+            target=OcrProcessor.warm_up,
+            args=(self.config_manager,),
+            daemon=True
+        ).start())
         QTimer.singleShot(200, lambda: self._check_for_updates())
 
     def _create_actions(self):
