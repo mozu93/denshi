@@ -32,7 +32,13 @@ datas += numpy_datas
 datas += pandas_datas
 
 # pytz は collect_all を使わず dist-info のみコピー（collect_all との競合を避ける）
-datas += copy_metadata('pytz')
+try:
+    datas += copy_metadata('pytz')
+except Exception:
+    pass  # pytz が未インストールの場合はスキップ
+
+# pdfplumber のデータファイル
+datas += collect_data_files('pdfplumber')
 
 # 隠れたインポートの明示的な指定
 hiddenimports = [
@@ -56,6 +62,16 @@ hiddenimports = [
     'send2trash',
     'filelock',
     'pytz',
+    'pdfplumber',
+    'pdfminer',
+    'pdfminer.six',
+    'pdfminer.high_level',
+    'pdfminer.layout',
+    'pdfminer.pdfpage',
+    'pdfminer.pdfinterp',
+    'pdfminer.converter',
+    'cryptography',
+    'charset_normalizer',
 ]
 
 # PyQt6の全サブモジュールを収集

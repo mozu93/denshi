@@ -4,5 +4,6 @@ pytesseract
 pdfplumber
 jaconv
 pandas
+pytz
 send2trash
 filelock
