@@ -41,8 +41,11 @@ class MainWindow(QMainWindow):
         root_save_directory = self.config_manager.get('Paths', 'root_save_directory', fallback=HARDCODED_ROOT_SAVE_DIRECTORY)
         self.metadata_manager = MetadataManager(root_save_directory)
 
-        # 起動時に通し番号を再計算
-        self.metadata_manager.recalculate_all_doc_ids()
+        # 起動時に通し番号を再計算（バックグラウンドで実行してUIブロックを回避）
+        threading.Thread(
+            target=self.metadata_manager.recalculate_all_doc_ids,
+            daemon=True
+        ).start()
 
         self.registration_tab = FileRegistrationTab(config_manager=self.config_manager, metadata_manager=self.metadata_manager)
         self.search_tab = FileSearchTab(config_manager=self.config_manager, metadata_manager=self.metadata_manager)
@@ -70,7 +73,7 @@ class MainWindow(QMainWindow):
             args=(self.config_manager,),
             daemon=True
         ).start())
-        QTimer.singleShot(200, lambda: self._check_for_updates())
+        self._check_for_updates()
 
     def _create_actions(self):
         self.open_action = QAction(QIcon.fromTheme("document-open"), "PDFを開く", self)
@@ -215,9 +218,18 @@ class MainWindow(QMainWindow):
         self.apply_font_size(DEFAULT_FONT_SIZE)
 
     def _check_for_updates(self):
-        """アップデートをチェックします。"""
-        from views.update_dialog import check_and_notify_update
-        check_and_notify_update(self, self.config_manager)
+        """アップデートをバックグラウンドでチェックします（インポートも含めUIをブロックしません）。"""
+        parent = self
+        config_manager = self.config_manager
+
+        def _bg():
+            try:
+                from views.update_dialog import check_and_notify_update
+                check_and_notify_update(parent, config_manager)
+            except Exception:
+                pass
+
+        threading.Thread(target=_bg, daemon=True).start()
 
     def closeEvent(self, event):
         """Save window size and splitter positions before closing."""

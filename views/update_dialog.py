@@ -2,92 +2,113 @@
 """
 アップデート通知ダイアログ
 新しいバージョンが利用可能な場合に通知ダイアログを表示します。
+バックグラウンドでダウンロードし、バッチ経由でインストーラーを起動します。
 """
 
 import logging
+import queue
+import sys
+import threading
 import webbrowser
 from datetime import datetime
+
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTextEdit, QCheckBox, QMessageBox
+    QPushButton, QTextEdit, QCheckBox, QProgressBar, QMessageBox
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 
-from utils.update_checker import check_for_updates, UpdateInfo
+from utils.update_checker import (
+    check_for_updates, download_installer, launch_installer, UpdateInfo
+)
 from utils.config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 
 class UpdateDialog(QDialog):
-    """アップデート通知ダイアログ"""
+    """アップデート通知・ダウンロード・インストールダイアログ"""
 
     def __init__(self, update_info: UpdateInfo, config_manager: ConfigManager, parent=None):
-        """
-        Args:
-            update_info: アップデート情報
-            config_manager: 設定マネージャー
-            parent: 親ウィジェット
-        """
         super().__init__(parent)
         self.update_info = update_info
         self.config_manager = config_manager
-        self.skip_version = False
+        self._installer_path = None
+        self._dl_queue: queue.Queue = queue.Queue()
 
         self._init_ui()
 
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._poll_queue)
+        self._poll_timer.start(100)
+
     def _init_ui(self):
-        """UIを初期化"""
         self.setWindowTitle("アップデートの確認")
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(400)
+        self.setMinimumWidth(520)
 
         layout = QVBoxLayout()
 
-        # タイトル
         title_label = QLabel("新しいバージョンが利用可能です")
         title_font = QFont("Meiryo UI", 12, QFont.Weight.Bold)
         title_label.setFont(title_font)
         layout.addWidget(title_label)
 
-        # バージョン情報
-        version_layout = QHBoxLayout()
         version_info = QLabel(
             f"現在のバージョン: {self.update_info.current_version}\n"
             f"最新バージョン: {self.update_info.latest_version}"
         )
-        version_layout.addWidget(version_info)
-        version_layout.addStretch()
-        layout.addLayout(version_layout)
-
+        layout.addWidget(version_info)
         layout.addSpacing(10)
 
-        # リリースノート
-        release_notes_label = QLabel("リリースノート:")
-        layout.addWidget(release_notes_label)
-
+        layout.addWidget(QLabel("リリースノート:"))
         self.release_notes_text = QTextEdit()
         self.release_notes_text.setReadOnly(True)
         self.release_notes_text.setPlainText(self.update_info.release_notes)
-        self.release_notes_text.setMaximumHeight(200)
+        self.release_notes_text.setMaximumHeight(180)
         layout.addWidget(self.release_notes_text)
+        layout.addSpacing(8)
 
-        layout.addSpacing(10)
+        # 進捗バー（ダウンロード中のみ表示）
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar)
+
+        self.progress_label = QLabel("")
+        self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_label.setVisible(False)
+        layout.addWidget(self.progress_label)
+
+        layout.addSpacing(4)
 
         # スキップチェックボックス
-        self.skip_checkbox = QCheckBox(f"このバージョン ({self.update_info.latest_version}) をスキップ")
+        self.skip_checkbox = QCheckBox(
+            f"このバージョン ({self.update_info.latest_version}) をスキップ"
+        )
         layout.addWidget(self.skip_checkbox)
 
-        # ボタン
+        # ボタン行
         button_layout = QHBoxLayout()
 
-        self.download_button = QPushButton("ダウンロードページを開く")
-        self.download_button.clicked.connect(self._on_download_clicked)
+        if self.update_info.download_url:
+            self.download_button = QPushButton("今すぐダウンロード")
+            self.download_button.clicked.connect(self._start_download)
+        else:
+            self.download_button = QPushButton("ダウンロードページを開く")
+            self.download_button.clicked.connect(self._open_browser)
         button_layout.addWidget(self.download_button)
 
+        self.install_button = QPushButton("インストールして再起動")
+        self.install_button.setVisible(False)
+        self.install_button.clicked.connect(self._install)
+        button_layout.addWidget(self.install_button)
+
+        button_layout.addStretch()
+
         self.later_button = QPushButton("後で")
-        self.later_button.clicked.connect(self._on_later_clicked)
+        self.later_button.clicked.connect(self.reject)
         button_layout.addWidget(self.later_button)
 
         self.skip_button = QPushButton("スキップ")
@@ -95,85 +116,133 @@ class UpdateDialog(QDialog):
         button_layout.addWidget(self.skip_button)
 
         layout.addLayout(button_layout)
-
         self.setLayout(layout)
 
-    def _on_download_clicked(self):
-        """ダウンロードボタンクリック時の処理"""
+    # ── ブラウザで開く ───────────────────────────────────────────
+
+    def _open_browser(self):
         try:
-            # ブラウザでダウンロードページを開く
             webbrowser.open(self.update_info.release_url)
-            logger.info(f"ダウンロードページを開きました: {self.update_info.release_url}")
             self.accept()
-        except Exception as e:
-            logger.error(f"ダウンロードページを開くのに失敗しました: {e}")
+        except Exception:
             QMessageBox.warning(
-                self,
-                "エラー",
-                f"ダウンロードページを開くのに失敗しました。\n\n"
-                f"手動で以下のURLを開いてください:\n{self.update_info.release_url}"
+                self, "エラー",
+                f"ページを開けませんでした。\n{self.update_info.release_url}"
             )
 
-    def _on_later_clicked(self):
-        """後でボタンクリック時の処理"""
-        logger.info("アップデートを後回しにしました")
-        self.reject()
+    # ── ダウンロード ─────────────────────────────────────────────
+
+    def _start_download(self):
+        self.download_button.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.progress_label.setText("ダウンロード中...")
+        self.progress_label.setVisible(True)
+        threading.Thread(target=self._do_download, daemon=True).start()
+
+    def _do_download(self):
+        def on_progress(received: int, total: int):
+            self._dl_queue.put(('progress', received, total))
+
+        path = download_installer(self.update_info.download_url, on_progress)
+        if path:
+            self._dl_queue.put(('ready', path))
+        else:
+            self._dl_queue.put(('failed',))
+
+    def _poll_queue(self):
+        """100ms ごとにキューを処理してUIを更新する（メインスレッドで実行）"""
+        try:
+            while True:
+                item = self._dl_queue.get_nowait()
+                if item[0] == 'progress':
+                    _, received, total = item
+                    if total > 0:
+                        self.progress_bar.setValue(int(received * 100 / total))
+                        self.progress_label.setText(
+                            f"{received / 1048576:.1f} / {total / 1048576:.1f} MB"
+                        )
+                    else:
+                        self.progress_label.setText(
+                            f"{received / 1048576:.1f} MB ダウンロード中..."
+                        )
+                elif item[0] == 'ready':
+                    self._installer_path = item[1]
+                    self.progress_bar.setValue(100)
+                    self.progress_label.setText("ダウンロード完了！インストールできます。")
+                    self.install_button.setVisible(True)
+                elif item[0] == 'failed':
+                    self.download_button.setEnabled(True)
+                    self.download_button.setText("再試行")
+                    self.progress_bar.setVisible(False)
+                    self.progress_label.setText("ダウンロードに失敗しました。")
+        except queue.Empty:
+            pass
+
+    # ── インストール ─────────────────────────────────────────────
+
+    def _install(self):
+        if not self._installer_path:
+            return
+        self._poll_timer.stop()
+        if getattr(sys, 'frozen', False):
+            launch_installer(self._installer_path)
+        else:
+            import subprocess
+            subprocess.Popen([self._installer_path])
+
+    # ── スキップ・クローズ ───────────────────────────────────────
 
     def _on_skip_clicked(self):
-        """スキップボタンクリック時の処理"""
         if self.skip_checkbox.isChecked():
-            # スキップバージョンをconfig.iniに保存
-            self.config_manager.set('Update', 'skip_version', self.update_info.latest_version)
+            self.config_manager.set(
+                'Update', 'skip_version', self.update_info.latest_version
+            )
             logger.info(f"バージョン {self.update_info.latest_version} をスキップしました")
-            self.skip_version = True
-
         self.reject()
+
+    def closeEvent(self, event):
+        self._poll_timer.stop()
+        super().closeEvent(event)
 
 
 def check_and_notify_update(parent, config_manager: ConfigManager):
     """
-    アップデートをチェックし、新しいバージョンがあれば通知ダイアログを表示します。
-
-    Args:
-        parent: 親ウィジェット
-        config_manager: 設定マネージャー
+    バックグラウンドスレッドでアップデートをチェックし、
+    新しいバージョンがあればメインスレッドで通知ダイアログを表示します。
     """
-    try:
-        # 起動時チェックが無効の場合はスキップ
-        check_enabled = config_manager.get('Update', 'check_on_startup', fallback='True') == 'True'
-        if not check_enabled:
-            logger.info("起動時のアップデートチェックは無効です")
-            return
+    def _bg_check():
+        try:
+            check_enabled = (
+                config_manager.get('Update', 'check_on_startup', fallback='True') == 'True'
+            )
+            if not check_enabled:
+                return
 
-        # アップデートチェック
-        update_info = check_for_updates()
-
-        if update_info is None:
-            # 最新バージョンを使用中、またはチェックに失敗
-            logger.info("アップデートチェック完了（新しいバージョンはありません）")
+            update_info = check_for_updates()
             _update_last_check_date(config_manager)
-            return
 
-        # スキップバージョンのチェック
-        skip_version = config_manager.get('Update', 'skip_version', fallback='')
-        if skip_version and skip_version == update_info.latest_version:
-            logger.info(f"バージョン {update_info.latest_version} はスキップ設定されています")
-            _update_last_check_date(config_manager)
-            return
+            if update_info is None:
+                return
 
-        # アップデート通知ダイアログを表示
-        logger.info("アップデート通知ダイアログを表示します")
-        dialog = UpdateDialog(update_info, config_manager, parent)
-        dialog.exec()
+            skip_version = config_manager.get('Update', 'skip_version', fallback='')
+            if skip_version and skip_version == update_info.latest_version:
+                logger.info(f"バージョン {update_info.latest_version} はスキップ設定されています")
+                return
 
-        _update_last_check_date(config_manager)
+            logger.info("アップデート通知ダイアログを表示します")
+            QTimer.singleShot(0, lambda: _show_update_dialog(update_info, config_manager, parent))
+        except Exception as e:
+            logger.error(f"アップデートチェック中にエラーが発生しました: {e}", exc_info=True)
 
-    except Exception as e:
-        logger.error(f"アップデートチェック中に予期しないエラーが発生しました: {e}", exc_info=True)
+    threading.Thread(target=_bg_check, daemon=True).start()
+
+
+def _show_update_dialog(update_info, config_manager, parent):
+    dialog = UpdateDialog(update_info, config_manager, parent)
+    dialog.exec()
 
 
 def _update_last_check_date(config_manager: ConfigManager):
-    """最終チェック日時を更新"""
     try:
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         config_manager.set('Update', 'last_check_date', current_date)

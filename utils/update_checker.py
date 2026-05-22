@@ -5,6 +5,8 @@ GitHub Releases APIを使用して、アプリケーションの最新バージ�
 """
 
 import logging
+import os
+import sys
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from packaging import version
@@ -147,15 +149,59 @@ def _extract_download_url(release_data: Dict[str, Any]) -> str:
 
 
 def format_version_for_display(version_str: str) -> str:
-    """
-    バージョン文字列を表示用にフォーマットします。
-
-    Args:
-        version_str: バージョン文字列（例: "v2.0.0" or "2.0.0"）
-
-    Returns:
-        str: フォーマットされたバージョン文字列（例: "v2.0.0"）
-    """
     if not version_str.startswith('v'):
         return f"v{version_str}"
     return version_str
+
+
+def download_installer(
+    url: str,
+    progress_callback=None,
+) -> Optional[str]:
+    """インストーラーを一時フォルダにダウンロードする。失敗時は None を返す"""
+    import tempfile
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": f"DenshiChobohozoSystem/{__version__}"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            total = int(resp.headers.get("Content-Length", -1))
+            fd, tmp_path = tempfile.mkstemp(
+                prefix="DenshiChobohozoSystem_new_", suffix=".exe"
+            )
+            received = 0
+            with os.fdopen(fd, "wb") as f:
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    received += len(chunk)
+                    if progress_callback:
+                        progress_callback(received, total)
+        return tmp_path
+    except Exception as e:
+        logger.error(f"インストーラーのダウンロードに失敗しました: {e}")
+        return None
+
+
+def launch_installer(installer_path: str) -> None:
+    """バッチファイル経由でインストーラーを起動し、アプリを終了する。
+    バッチが3秒待機してアプリ終了後にインストーラーを起動する。"""
+    import subprocess
+    import tempfile
+    fd, bat_path = tempfile.mkstemp(
+        prefix="DenshiChobohozoSystem_updater_", suffix=".bat"
+    )
+    with os.fdopen(fd, "w", encoding="cp932") as f:
+        f.write("@echo off\r\n")
+        f.write("timeout /t 3 /nobreak > nul\r\n")
+        f.write(f'start "" "{installer_path}"\r\n')
+        f.write('del "%~f0"\r\n')
+    subprocess.Popen(
+        ["cmd", "/c", bat_path],
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    sys.exit(0)
