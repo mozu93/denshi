@@ -230,7 +230,8 @@ def check_and_notify_update(parent, config_manager: ConfigManager):
                 return
 
             logger.info("アップデート通知ダイアログを表示します")
-            QTimer.singleShot(0, lambda: _show_update_dialog(update_info, config_manager, parent))
+            # parent をコンテキストに指定してメインスレッドのイベントループで実行させる
+            QTimer.singleShot(0, parent, lambda: _show_update_dialog(update_info, config_manager, parent))
         except Exception as e:
             logger.error(f"アップデートチェック中にエラーが発生しました: {e}", exc_info=True)
 
