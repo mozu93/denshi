@@ -110,6 +110,20 @@ class LearningManager:
         """学習済みの取引先名一覧を返す。"""
         return list(self._data.get("issuers", {}).keys())
 
+    def learn_reg_number(self, reg_number: str, issuer: str) -> None:
+        """適格請求書登録番号（T+13桁）と取引先名を紐付けて記録する。"""
+        if not reg_number or not issuer:
+            return
+        self._data.setdefault("reg_numbers", {})[reg_number] = issuer
+        self._save()
+        logger.info(f"登録番号を学習: {reg_number} → {issuer}")
+
+    def get_issuer_by_reg_number(self, reg_number: str) -> Optional[str]:
+        """登録番号から学習済みの取引先名を返す。未登録の場合は None。"""
+        if not reg_number:
+            return None
+        return self._data.get("reg_numbers", {}).get(reg_number)
+
     # ------------------------------------------------------------------
     # 内部処理
     # ------------------------------------------------------------------

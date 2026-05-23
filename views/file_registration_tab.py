@@ -4,6 +4,7 @@ import io
 import logging
 from functools import partial
 import re
+from typing import Optional
 
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QListWidget, QLabel, QLineEdit, QFormLayout,
@@ -96,6 +97,7 @@ class FileRegistrationTab(QWidget):
         )
         self.learning_manager = LearningManager(_learning_path)
         self.last_ocr_regions: dict = {}  # field_name -> (x_pct, y_pct, w_pct, h_pct)
+        self.last_reg_number: Optional[str] = None  # 現在表示中PDFの登録番号
 
         self._create_widgets()
         self._setup_layout()
@@ -566,6 +568,25 @@ class FileRegistrationTab(QWidget):
             self.extraction_status_label.setStyleSheet("color: #888;")
             return
 
+        # 登録番号（T+13桁）を記憶（保存時の学習に使用）
+        self.last_reg_number = result.reg_number
+
+        # T番号で学習済みの取引先名があれば最優先で使用
+        # 自動抽出より精度が高い（ユーザーが一度確認した正確な名前）
+        if result.reg_number:
+            cached = self.learning_manager.get_issuer_by_reg_number(result.reg_number)
+            if cached:
+                result.client_name = cached
+                result.field_confidences['client_name'] = 0.95
+
+        # 取引先名が未取得の場合、ndlocr-lite 全ページOCRでフォールバック
+        if (not result.client_name
+                or result.field_confidences.get('client_name', 0) < PdfTextExtractor.CONFIDENCE_THRESHOLD):
+            ocr_client = self._extract_client_from_ocr(file_path)
+            if ocr_client:
+                result.client_name = ocr_client
+                result.field_confidences['client_name'] = 0.6
+
         threshold = PdfTextExtractor.CONFIDENCE_THRESHOLD
         filled = []
 
@@ -609,10 +630,62 @@ class FileRegistrationTab(QWidget):
             )
             self.extraction_status_label.setStyleSheet("color: #888;")
 
+    def _extract_client_from_ocr(self, file_path: str):
+        """ndlocr-lite で 1 ページ目全体をOCRして企業名を抽出するフォールバック。"""
+        try:
+            import fitz
+            _CORP_SUFFIX = (
+                r'(?:株式会社|有限会社|合同会社|合資会社|合名会社'
+                r'|一般社団法人|公益社団法人|社会福祉法人|医療法人'
+                r'|学校法人|協同組合|農業協同組合|信用組合|信用金庫)'
+            )
+
+            doc = fitz.open(file_path)
+            page = doc.load_page(0)
+            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+            doc.close()
+
+            pil_img = Image.open(io.BytesIO(pix.tobytes("png")))
+            ocr_results = OcrProcessor(pil_img, self.config_manager).get_text_and_boxes()
+
+            recipient_names: set = set()
+            issuer_names: list = []
+
+            for r in ocr_results:
+                text = r['text'].strip()
+                if not text:
+                    continue
+                # 御中・様の直前は宛先なので発行元候補から除外
+                if re.search(r'(?:御中|様)(?:\s|$)', text):
+                    m = re.search(rf'(.{{2,30}}?){_CORP_SUFFIX}', text)
+                    if m:
+                        recipient_names.add(m.group(0).strip())
+                    continue
+                # 接尾パターン: ○○株式会社
+                m = re.search(rf'(.{{0,20}}{_CORP_SUFFIX})', text)
+                if m:
+                    name = m.group(1).strip()
+                    if name not in recipient_names and 2 <= len(name) <= 30:
+                        issuer_names.append(name)
+                        continue
+                # 接頭パターン: 株式会社○○
+                m = re.search(rf'({_CORP_SUFFIX}.{{1,20}})', text)
+                if m:
+                    name = m.group(1).strip()
+                    if name not in recipient_names and 2 <= len(name) <= 30:
+                        issuer_names.append(name)
+
+            return issuer_names[0] if issuer_names else None
+
+        except Exception as e:
+            logger.debug(f"取引先名OCRフォールバックエラー: {e}")
+            return None
+
     def _trigger_auto_extract(self):
         """「自動入力」ボタン押下時：フィールドをクリアして再抽出する"""
         self.clear_input_fields()
         self.last_ocr_regions = {}
+        self.last_reg_number = None
         self.extraction_status_label.setText("")
         self._try_auto_extract(self.file_list_widget.currentItem())
 
@@ -878,6 +951,10 @@ class FileRegistrationTab(QWidget):
                     client_name_raw, doc_type, transaction_type, self.last_ocr_regions
                 )
                 self.last_ocr_regions = {}
+                # 学習: 登録番号→取引先名の紐付けを記録
+                if self.last_reg_number and client_name_raw:
+                    self.learning_manager.learn_reg_number(self.last_reg_number, client_name_raw)
+                self.last_reg_number = None
 
                 QMessageBox.information(self, "成功", f"ファイルを保存しました。\n{target_path}")
 
