@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 アップデート通知ダイアログ
-新しいバージョンが利用可能な場合に通知ダイアログを表示します。
-バックグラウンドでダウンロードし、バッチ経由でインストーラーを起動します。
+バックグラウンドスレッドでバージョンチェック → ダウンロード → 自動インストール
 """
 
 import logging
@@ -16,21 +15,24 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTextEdit, QCheckBox, QProgressBar, QMessageBox
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal
 from PyQt6.QtGui import QFont
 
-from utils.update_checker import (
-    check_for_updates, download_installer, launch_installer, UpdateInfo
-)
 from utils.config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 
+class _UpdateBridge(QObject):
+    """バックグラウンドスレッド → メインスレッドへシグナルを届けるブリッジ。
+    メインスレッドで生成すること。"""
+    update_available = pyqtSignal(object)  # UpdateInfo を渡す
+
+
 class UpdateDialog(QDialog):
     """アップデート通知・ダウンロード・インストールダイアログ"""
 
-    def __init__(self, update_info: UpdateInfo, config_manager: ConfigManager, parent=None):
+    def __init__(self, update_info, config_manager: ConfigManager, parent=None):
         super().__init__(parent)
         self.update_info = update_info
         self.config_manager = config_manager
@@ -59,7 +61,7 @@ class UpdateDialog(QDialog):
             f"最新バージョン: {self.update_info.latest_version}"
         )
         layout.addWidget(version_info)
-        layout.addSpacing(10)
+        layout.addSpacing(8)
 
         layout.addWidget(QLabel("リリースノート:"))
         self.release_notes_text = QTextEdit()
@@ -83,13 +85,11 @@ class UpdateDialog(QDialog):
 
         layout.addSpacing(4)
 
-        # スキップチェックボックス
         self.skip_checkbox = QCheckBox(
             f"このバージョン ({self.update_info.latest_version}) をスキップ"
         )
         layout.addWidget(self.skip_checkbox)
 
-        # ボタン行
         button_layout = QHBoxLayout()
 
         if self.update_info.download_url:
@@ -118,8 +118,6 @@ class UpdateDialog(QDialog):
         layout.addLayout(button_layout)
         self.setLayout(layout)
 
-    # ── ブラウザで開く ───────────────────────────────────────────
-
     def _open_browser(self):
         try:
             webbrowser.open(self.update_info.release_url)
@@ -130,8 +128,6 @@ class UpdateDialog(QDialog):
                 f"ページを開けませんでした。\n{self.update_info.release_url}"
             )
 
-    # ── ダウンロード ─────────────────────────────────────────────
-
     def _start_download(self):
         self.download_button.setEnabled(False)
         self.progress_bar.setVisible(True)
@@ -140,17 +136,15 @@ class UpdateDialog(QDialog):
         threading.Thread(target=self._do_download, daemon=True).start()
 
     def _do_download(self):
+        from utils.update_checker import download_installer
+
         def on_progress(received: int, total: int):
             self._dl_queue.put(('progress', received, total))
 
         path = download_installer(self.update_info.download_url, on_progress)
-        if path:
-            self._dl_queue.put(('ready', path))
-        else:
-            self._dl_queue.put(('failed',))
+        self._dl_queue.put(('ready', path) if path else ('failed',))
 
     def _poll_queue(self):
-        """100ms ごとにキューを処理してUIを更新する（メインスレッドで実行）"""
         try:
             while True:
                 item = self._dl_queue.get_nowait()
@@ -178,19 +172,16 @@ class UpdateDialog(QDialog):
         except queue.Empty:
             pass
 
-    # ── インストール ─────────────────────────────────────────────
-
     def _install(self):
         if not self._installer_path:
             return
         self._poll_timer.stop()
+        from utils.update_checker import launch_installer
         if getattr(sys, 'frozen', False):
             launch_installer(self._installer_path)
         else:
             import subprocess
             subprocess.Popen([self._installer_path])
-
-    # ── スキップ・クローズ ───────────────────────────────────────
 
     def _on_skip_clicked(self):
         if self.skip_checkbox.isChecked():
@@ -207,11 +198,21 @@ class UpdateDialog(QDialog):
 
 def check_and_notify_update(parent, config_manager: ConfigManager):
     """
-    バックグラウンドスレッドでアップデートをチェックし、
-    新しいバージョンがあればメインスレッドで通知ダイアログを表示します。
+    メインスレッドから呼ぶこと。
+    シグナルブリッジをメインスレッドで生成してからバックグラウンドでHTTPチェックを実行する。
     """
-    def _bg_check():
+    # ブリッジはメインスレッドで生成（シグナルはスレッドセーフ）
+    bridge = _UpdateBridge(parent)
+    bridge.update_available.connect(
+        lambda info: _show_update_dialog(info, config_manager, parent),
+        Qt.ConnectionType.QueuedConnection,
+    )
+
+    def _bg():
         try:
+            # 重いインポートはバックグラウンドスレッドで実行
+            from utils.update_checker import check_for_updates
+
             check_enabled = (
                 config_manager.get('Update', 'check_on_startup', fallback='True') == 'True'
             )
@@ -230,12 +231,11 @@ def check_and_notify_update(parent, config_manager: ConfigManager):
                 return
 
             logger.info("アップデート通知ダイアログを表示します")
-            # parent をコンテキストに指定してメインスレッドのイベントループで実行させる
-            QTimer.singleShot(0, parent, lambda: _show_update_dialog(update_info, config_manager, parent))
+            bridge.update_available.emit(update_info)  # スレッドセーフなシグナル送信
         except Exception as e:
             logger.error(f"アップデートチェック中にエラーが発生しました: {e}", exc_info=True)
 
-    threading.Thread(target=_bg_check, daemon=True).start()
+    threading.Thread(target=_bg, daemon=True).start()
 
 
 def _show_update_dialog(update_info, config_manager, parent):

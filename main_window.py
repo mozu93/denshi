@@ -230,18 +230,9 @@ class MainWindow(QMainWindow):
         self.apply_font_size(DEFAULT_FONT_SIZE)
 
     def _check_for_updates(self):
-        """アップデートをバックグラウンドでチェックします（インポートも含めUIをブロックしません）。"""
-        parent = self
-        config_manager = self.config_manager
-
-        def _bg():
-            try:
-                from views.update_dialog import check_and_notify_update
-                check_and_notify_update(parent, config_manager)
-            except Exception:
-                pass
-
-        threading.Thread(target=_bg, daemon=True).start()
+        """アップデートをバックグラウンドでチェックします（メインスレッドから呼ぶこと）。"""
+        from views.update_dialog import check_and_notify_update
+        check_and_notify_update(self, self.config_manager)
 
     def closeEvent(self, event):
         """Save window size and splitter positions before closing."""
