@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QMenuBar, QMessageBox, QToolBar
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QMenuBar, QMessageBox, QToolBar, QApplication
 from PyQt6.QtGui import QIcon, QAction, QFont
 from PyQt6.QtCore import QTimer
 from views.file_registration_tab import FileRegistrationTab
@@ -14,8 +14,10 @@ import os
 import threading
 
 class MainWindow(QMainWindow):
-    def __init__(self, config_file, parent=None):
+    def __init__(self, config_file, parent=None, progress_callback=None):
         super().__init__(parent)
+        _progress = progress_callback or (lambda v, m: None)
+
         self.setAcceptDrops(True)
         self.setWindowTitle("電子帳簿保存システム")
         self.test_mode = False
@@ -27,6 +29,8 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central_widget)
 
         self.tabs = QTabWidget()
+
+        _progress(25, "設定ファイルを読み込み中...")
         self.config_manager = ConfigManager(config_path=config_file)
 
         # ウィンドウサイズの復元
@@ -39,6 +43,8 @@ class MainWindow(QMainWindow):
 
         # 設定ファイルからルート保存ディレクトリを読み込む（未設定ならデフォルト値）
         root_save_directory = self.config_manager.get('Paths', 'root_save_directory', fallback=HARDCODED_ROOT_SAVE_DIRECTORY)
+
+        _progress(35, "データを初期化中...")
         self.metadata_manager = MetadataManager(root_save_directory)
 
         # 起動時に通し番号を再計算（バックグラウンドで実行してUIブロックを回避）
@@ -47,13 +53,17 @@ class MainWindow(QMainWindow):
             daemon=True
         ).start()
 
+        _progress(50, "登録画面を構築中...")
         self.registration_tab = FileRegistrationTab(config_manager=self.config_manager, metadata_manager=self.metadata_manager)
+
+        _progress(72, "検索画面を構築中...")
         self.search_tab = FileSearchTab(config_manager=self.config_manager, metadata_manager=self.metadata_manager)
         self.tabs.addTab(self.registration_tab, QIcon.fromTheme("document-new"), "ファイル登録モード")
         self.tabs.addTab(self.search_tab, QIcon.fromTheme("edit-find"), "ファイル検索モード")
         self.tabs.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(self.tabs)
 
+        _progress(85, "メニューを構築中...")
         # Actions must be created before menus and toolbars
         self._create_actions()
 
@@ -65,6 +75,8 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("準備完了")
+
+        _progress(95, "起動処理を開始中...")
         if not root_save_directory:
             QTimer.singleShot(0, lambda: self._prompt_configure_root_dir())
         QTimer.singleShot(0, lambda: show_startup_guide(self.config_manager, self))
@@ -233,10 +245,12 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Save window size and splitter positions before closing."""
-        # ウィンドウサイズの保存
+        self.status_bar.showMessage("終了中...")
+        self.setEnabled(False)
+        QApplication.processEvents()
+
         self.config_manager.set_window_size(self.width(), self.height())
 
-        # スプリッターのサイズを保存
         if hasattr(self.registration_tab, 'save_splitter_sizes'):
             self.registration_tab.save_splitter_sizes()
         if hasattr(self.search_tab, 'save_splitter_sizes'):

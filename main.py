@@ -74,10 +74,23 @@ def main():
     # Apply unified style
     apply_app_style(app)
 
+    from views.splash_screen import SplashScreen
+    splash = SplashScreen()
+    splash.show()
+    app.processEvents()
+
+    splash.update_progress(10, "設定ファイルを確認中...")
     config_path = get_config_path(base_path)
 
-    main_win = MainWindow(config_file=config_path)
+    splash.update_progress(20, "アプリケーションを初期化中...")
+    main_win = MainWindow(
+        config_file=config_path,
+        progress_callback=splash.update_progress,
+    )
+
+    splash.update_progress(100, "準備完了")
     main_win.show()
+    splash.close()
     sys.exit(app.exec())
 
 if __name__ == '__main__':
