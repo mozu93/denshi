@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QMenuBar, QMessageBox, QToolBar, QApplication
-from PyQt6.QtGui import QIcon, QAction, QFont
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QMenuBar, QMessageBox, QApplication
+from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QTimer
 from views.file_registration_tab import FileRegistrationTab
 from views.file_search_tab import FileSearchTab
@@ -70,7 +70,6 @@ class MainWindow(QMainWindow):
         self.menu_bar = QMenuBar(self)
         self.setMenuBar(self.menu_bar)
         self._create_menus()
-        self._create_toolbar()
 
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
@@ -88,21 +87,23 @@ class MainWindow(QMainWindow):
         self._check_for_updates()
 
     def _create_actions(self):
-        self.open_action = QAction(QIcon.fromTheme("document-open"), "PDFを開く", self)
+        self.open_folder_action = QAction("フォルダを開く", self)
+        self.open_folder_action.triggered.connect(self.registration_tab.open_folder_dialog)
+        self.open_action = QAction("ファイルを開く", self)
         self.open_action.triggered.connect(self.registration_tab.open_file_dialog)
-        self.exit_action = QAction(QIcon.fromTheme("application-exit"), "終了", self)
+        self.exit_action = QAction("終了", self)
         self.exit_action.triggered.connect(self.close)
-        self.reindex_action = QAction(QIcon.fromTheme("view-refresh"), "インデックス再構築", self)
+        self.reindex_action = QAction("インデックス再構築", self)
         self.reindex_action.triggered.connect(self.rebuild_index)
-        self.settings_action = QAction(QIcon.fromTheme("preferences-system"), "設定", self)
+        self.settings_action = QAction("設定", self)
         self.settings_action.triggered.connect(self.open_settings)
-        self.help_action = QAction(QIcon.fromTheme("help-contents"), "ヘルプを表示", self)
+        self.help_action = QAction("ヘルプを表示", self)
         self.help_action.triggered.connect(self._show_help_dialog)
-        self.zoom_in_font_action = QAction(QIcon.fromTheme("zoom-in"), "文字を大きく", self)
+        self.zoom_in_font_action = QAction("文字を大きく", self)
         self.zoom_in_font_action.triggered.connect(self.increase_font_size)
-        self.zoom_out_font_action = QAction(QIcon.fromTheme("zoom-out"), "文字を小さく", self)
+        self.zoom_out_font_action = QAction("文字を小さく", self)
         self.zoom_out_font_action.triggered.connect(self.decrease_font_size)
-        self.reset_font_action = QAction(QIcon.fromTheme("zoom-original"), "文字サイズリセット", self)
+        self.reset_font_action = QAction("文字サイズリセット", self)
         self.reset_font_action.triggered.connect(self.reset_font_size)
         self.test_mode_action = QAction("テストモード", self)
         self.test_mode_action.setCheckable(True)
@@ -110,35 +111,24 @@ class MainWindow(QMainWindow):
 
     def _create_menus(self):
         file_menu = self.menu_bar.addMenu("ファイル")
+        file_menu.addAction(self.open_folder_action)
         file_menu.addAction(self.open_action)
         file_menu.addSeparator()
         file_menu.addAction(self.exit_action)
 
-        tool_menu = self.menu_bar.addMenu("ツール")
-        tool_menu.addAction(self.reindex_action)
-        tool_menu.addAction(self.settings_action)
+        self.menu_bar.addAction(self.reindex_action)
 
         view_menu = self.menu_bar.addMenu("表示")
         view_menu.addAction(self.zoom_in_font_action)
         view_menu.addAction(self.zoom_out_font_action)
         view_menu.addAction(self.reset_font_action)
 
+        self.menu_bar.addAction(self.settings_action)
+
         help_menu = self.menu_bar.addMenu("ヘルプ")
         help_menu.addAction(self.help_action)
         help_menu.addSeparator()
         help_menu.addAction(self.test_mode_action)
-
-    def _create_toolbar(self):
-        tool_bar = QToolBar("Main Toolbar")
-        self.addToolBar(tool_bar)
-        tool_bar.addAction(self.open_action)
-        tool_bar.addAction(self.settings_action)
-        tool_bar.addSeparator()
-        tool_bar.addAction(self.zoom_in_font_action)
-        tool_bar.addAction(self.zoom_out_font_action)
-        tool_bar.addAction(self.reset_font_action)
-        tool_bar.addSeparator()
-        tool_bar.addAction(self.help_action)
 
     def rebuild_index(self):
         reply = QMessageBox.question(self, 'インデックス再構築',
@@ -201,14 +191,8 @@ class MainWindow(QMainWindow):
 
     def apply_font_size(self, font_size):
         """Apply the specified font size to the entire application."""
-        font = QFont()
-        font.setPointSize(font_size)
-        self.setFont(font)
-        # タブのフォントも更新
-        for i in range(self.tabs.count()):
-            widget = self.tabs.widget(i)
-            if widget:
-                widget.setFont(font)
+        from utils.ui_styles import get_app_style
+        QApplication.instance().setStyleSheet(get_app_style(font_size))
 
     def increase_font_size(self):
         current_size = self.config_manager.get_ui_font_size()

@@ -1,8 +1,9 @@
 import sys
 import os
 import logging
+import ctypes
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QIcon
 from main_window import MainWindow
 from utils.ui_styles import apply_app_style
 from utils.constants import HARDCODED_SHARED_CONFIG_PATH
@@ -61,11 +62,22 @@ def main():
         format='%(asctime)s [%(name)s] %(levelname)s - %(message)s'
     )
 
+    # Windowsタスクバーで独立したアプリアイコンを表示するために必要
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('mozu93.DenshiChobo.App')
+    except Exception:
+        pass
+
     app = QApplication(sys.argv)
 
     # 作業ディレクトリをスクリプトの場所に変更（ダブルクリック起動対応）
     base_path = get_base_path()
     os.chdir(base_path)
+
+    # アプリアイコンを設定（タスクバー・ウィンドウ共通）
+    icon_path = os.path.join(base_path, 'installer', 'icon.ico')
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
 
     # Set global font to Meiryo
     font = QFont("Meiryo UI", 10)
@@ -91,6 +103,24 @@ def main():
     splash.update_progress(100, "準備完了")
     main_win.show()
     splash.close()
+
+    # Windows APIで直接HWNDにアイコンをセット（タスクバー反映に必要）
+    if os.path.exists(icon_path):
+        try:
+            LR_LOADFROMFILE = 0x0010
+            LR_DEFAULTSIZE  = 0x0040
+            IMAGE_ICON      = 1
+            WM_SETICON      = 0x0080
+            hicon = ctypes.windll.user32.LoadImageW(
+                None, icon_path, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE
+            )
+            if hicon:
+                hwnd = int(main_win.winId())
+                ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, 0, hicon)  # ICON_SMALL
+                ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, 1, hicon)  # ICON_BIG
+        except Exception:
+            pass
+
     sys.exit(app.exec())
 
 if __name__ == '__main__':

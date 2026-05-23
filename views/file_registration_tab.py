@@ -128,7 +128,7 @@ class FileRegistrationTab(QWidget):
         self.file_list_widget = QListWidget()
         self.file_list_widget.setMinimumHeight(120)
 
-        self.placeholder_label = QLabel("ここへPDFファイルをドラッグアンドドロップしてください。")
+        self.placeholder_label = QLabel("ファイルメニューからフォルダを選択するか、ファイルを選択、または\nここへPDFファイルをドラッグアンドドロップしてください。")
         self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.placeholder_label.setStyleSheet("color: #888;")
 
@@ -313,6 +313,30 @@ class FileRegistrationTab(QWidget):
             self.placeholder_label.hide()
         else:
             self.placeholder_label.show()
+
+    def open_folder_dialog(self):
+        """フォルダダイアログを開いてフォルダ内のPDFを全て登録"""
+        last_folder = self.config_manager.get_last_folder_path()
+
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "フォルダを選択",
+            last_folder,
+        )
+
+        if folder:
+            try:
+                self.config_manager.set_last_folder_path(folder)
+            except Exception:
+                pass
+
+            pdf_files = sorted(
+                os.path.join(folder, f)
+                for f in os.listdir(folder)
+                if f.lower().endswith('.pdf')
+            )
+            for file_path in pdf_files:
+                self.add_file_to_list(file_path)
 
     def open_file_dialog(self):
         """ファイルダイアログを開いてPDFファイルを選択"""
