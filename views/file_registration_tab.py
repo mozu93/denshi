@@ -329,7 +329,10 @@ class FileRegistrationTab(QWidget):
         if files:
             # 最初のファイルのフォルダパスを保存（次回用）
             first_file_folder = os.path.dirname(files[0])
-            self.config_manager.set_last_folder_path(first_file_folder)
+            try:
+                self.config_manager.set_last_folder_path(first_file_folder)
+            except Exception:
+                pass
 
             # ファイルをリストに追加
             for file in files:

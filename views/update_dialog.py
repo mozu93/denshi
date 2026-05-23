@@ -185,9 +185,12 @@ class UpdateDialog(QDialog):
 
     def _on_skip_clicked(self):
         if self.skip_checkbox.isChecked():
-            self.config_manager.set(
-                'Update', 'skip_version', self.update_info.latest_version
-            )
+            try:
+                self.config_manager.set(
+                    'Update', 'skip_version', self.update_info.latest_version
+                )
+            except Exception:
+                pass
             logger.info(f"バージョン {self.update_info.latest_version} をスキップしました")
         self.reject()
 

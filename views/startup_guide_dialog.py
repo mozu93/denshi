@@ -25,4 +25,7 @@ def show_startup_guide(config_manager, parent=None):
     msg_box.exec()
     
     if dont_show_again_checkbox.isChecked():
-        config_manager.set('Settings', 'show_startup_guide', 'False')
+        try:
+            config_manager.set('Settings', 'show_startup_guide', 'False')
+        except Exception:
+            pass
