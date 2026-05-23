@@ -210,7 +210,6 @@ def check_and_notify_update(parent, config_manager: ConfigManager):
 
     def _bg():
         try:
-            # 重いインポートはバックグラウンドスレッドで実行
             from utils.update_checker import check_for_updates
 
             check_enabled = (
@@ -231,7 +230,7 @@ def check_and_notify_update(parent, config_manager: ConfigManager):
                 return
 
             logger.info("アップデート通知ダイアログを表示します")
-            bridge.update_available.emit(update_info)  # スレッドセーフなシグナル送信
+            bridge.update_available.emit(update_info)
         except Exception as e:
             logger.error(f"アップデートチェック中にエラーが発生しました: {e}", exc_info=True)
 

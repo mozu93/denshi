@@ -211,23 +211,29 @@ class MainWindow(QMainWindow):
                 widget.setFont(font)
 
     def increase_font_size(self):
-        """Increase the font size."""
         current_size = self.config_manager.get_ui_font_size()
         new_size = min(current_size + 2, MAX_FONT_SIZE)
-        self.config_manager.set_ui_font_size(new_size)
         self.apply_font_size(new_size)
+        try:
+            self.config_manager.set_ui_font_size(new_size)
+        except Exception:
+            pass
 
     def decrease_font_size(self):
-        """Decrease the font size."""
         current_size = self.config_manager.get_ui_font_size()
         new_size = max(current_size - 2, MIN_FONT_SIZE)
-        self.config_manager.set_ui_font_size(new_size)
         self.apply_font_size(new_size)
+        try:
+            self.config_manager.set_ui_font_size(new_size)
+        except Exception:
+            pass
 
     def reset_font_size(self):
-        """Reset the font size to default."""
-        self.config_manager.set_ui_font_size(DEFAULT_FONT_SIZE)
         self.apply_font_size(DEFAULT_FONT_SIZE)
+        try:
+            self.config_manager.set_ui_font_size(DEFAULT_FONT_SIZE)
+        except Exception:
+            pass
 
     def _check_for_updates(self):
         """アップデートをバックグラウンドでチェックします（メインスレッドから呼ぶこと）。"""
@@ -240,11 +246,17 @@ class MainWindow(QMainWindow):
         self.setEnabled(False)
         QApplication.processEvents()
 
-        self.config_manager.set_window_size(self.width(), self.height())
+        try:
+            self.config_manager.set_window_size(self.width(), self.height())
+        except Exception:
+            pass
 
-        if hasattr(self.registration_tab, 'save_splitter_sizes'):
-            self.registration_tab.save_splitter_sizes()
-        if hasattr(self.search_tab, 'save_splitter_sizes'):
-            self.search_tab.save_splitter_sizes()
+        try:
+            if hasattr(self.registration_tab, 'save_splitter_sizes'):
+                self.registration_tab.save_splitter_sizes()
+            if hasattr(self.search_tab, 'save_splitter_sizes'):
+                self.search_tab.save_splitter_sizes()
+        except Exception:
+            pass
 
         event.accept()
