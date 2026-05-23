@@ -7,6 +7,7 @@ from datetime import datetime
 
 from models.csv_repository import CsvRepository
 from models.file_scanner import FileScanner
+from models.audit_logger import AuditLogger
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +19,14 @@ class MetadataManager:
         self.root_path = root_path
         self._repo = CsvRepository()
         self._scanner = FileScanner(root_path, self._repo)
+        self._audit = AuditLogger(root_path)
         self.columns = CsvRepository.COLUMNS
 
     def update_root_directory(self, new_root_path):
         """Updates the root directory path."""
         self.root_path = new_root_path
         self._scanner.root_path = new_root_path
+        self._audit.root_path = new_root_path
 
     def _get_csv_path(self, year_nendo):
         return os.path.join(self.root_path, year_nendo, 'index.csv')
@@ -75,6 +78,7 @@ class MetadataManager:
 
         new_df = pd.concat([df, pd.DataFrame([entry])], ignore_index=True)
         self.save_df(year_nendo, new_df)
+        self._audit.log_create(year_nendo, new_id, entry)
         return new_id
 
     def get_available_years(self):
@@ -179,9 +183,11 @@ class MetadataManager:
         if record_to_delete.empty:
             return None
 
-        file_path = record_to_delete.iloc[0]['file_path']
+        deleted_record = record_to_delete.iloc[0].to_dict()
+        file_path = deleted_record['file_path']
         df = df[df['id'] != record_id]
         self.save_df(year_nendo, df)
+        self._audit.log_delete(year_nendo, record_id, deleted_record)
         return file_path
 
     def update_entry(self, original_year, record_id, new_data):
@@ -285,6 +291,7 @@ class MetadataManager:
                         df_original.loc[original_index, key] = value
                 self.save_df(original_year, df_original)
 
+            self._audit.log_update(original_year, record_id, original_record, final_record_data)
             return True
 
         except Exception as e:
