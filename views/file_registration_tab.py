@@ -529,14 +529,26 @@ class FileRegistrationTab(QWidget):
             pass
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
+        ocr_results = []
         try:
             ocr_processor = OcrProcessor(cropped_image, self.config_manager)
             ocr_results = ocr_processor.get_text_and_boxes()
-        finally:
+        except Exception as e:
+            logger.error(f"OCR処理エラー: {e}", exc_info=True)
             QApplication.restoreOverrideCursor()
             try:
                 main_win = self.window()
                 if hasattr(main_win, 'status_bar'):
+                    main_win.status_bar.showMessage("OCRエラー", 3000)
+            except Exception:
+                pass
+            QMessageBox.warning(self, "OCRエラー", f"OCRの読み取りに失敗しました。\n\n{e}")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            try:
+                main_win = self.window()
+                if hasattr(main_win, 'status_bar') and ocr_results is not None:
                     main_win.status_bar.showMessage("OCR完了", 3000)
             except Exception:
                 pass

@@ -81,6 +81,8 @@ class _OcrServer:
             raise RuntimeError(f"サーバースクリプトが見つかりません: {_SERVER_SCRIPT}")
 
         logger.info("ndlocr-lite サーバーを起動中...")
+        # Windows でコンソールウィンドウが表示されないよう CREATE_NO_WINDOW を指定
+        _cflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         proc = subprocess.Popen(
             [_NDL_PYTHON, _SERVER_SCRIPT],
             stdin=subprocess.PIPE,
@@ -89,6 +91,7 @@ class _OcrServer:
             text=True,
             encoding="utf-8",
             bufsize=1,   # 行バッファ
+            creationflags=_cflags,
         )
 
         # "READY" を待つ（最大120秒）
