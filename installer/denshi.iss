@@ -8,7 +8,7 @@
 #define MyAppExeName "DenshiChobohozoSystem.exe"
 
 ; バージョン情報（build.pyで自動的に置き換えられる）
-#define MyAppVersion "v2.1.0"
+#define MyAppVersion "v2.7.1"
 
 [Setup]
 ; アプリケーション情報
@@ -41,7 +41,7 @@ Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 [Tasks]
 Name: "desktopicon"; Description: "デスクトップアイコンを作成する(&D)"; GroupDescription: "追加のアイコン:"
 Name: "quicklaunchicon"; Description: "クイック起動アイコンを作成する(&Q)"; GroupDescription: "追加のアイコン:"; Flags: unchecked
-Name: "install_ndlocr"; Description: "OCRエンジン（ndlocr-lite）をインストールする（インターネット接続が必要です）"; GroupDescription: "OCR機能:"; Flags: checked
+Name: "install_ndlocr"; Description: "OCRエンジン（ndlocr-lite）をインストールする（インターネット接続が必要です）"; GroupDescription: "OCR機能:"
 
 ; ファイルのインストール
 [Files]
