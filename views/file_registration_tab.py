@@ -277,6 +277,10 @@ class FileRegistrationTab(QWidget):
         self.register_client_button = QPushButton("登録")
         self.recall_client_button = QPushButton("呼出")
         self.amount_edit = QLineEdit()
+        self.amount_warning_label = QLabel("⚠ 先頭が「0」になっています。OCR誤認識の可能性があります（例: 6090→0690）。手動で確認してください。")
+        self.amount_warning_label.setStyleSheet("color: #c0392b; font-size: 9pt;")
+        self.amount_warning_label.setWordWrap(True)
+        self.amount_warning_label.hide()
         self.memo_edit = QTextEdit()
         self.remove_file_button = QPushButton(QIcon.fromTheme("list-remove"), "リストから削除")
         self.filename_preview_label = QLabel("(ファイル名プレビュー)")
@@ -340,6 +344,7 @@ class FileRegistrationTab(QWidget):
         form_layout.addRow("取引先名:", client_name_layout)
 
         form_layout.addRow("金額(税込):", self.amount_edit)
+        form_layout.addRow("", self.amount_warning_label)
         form_layout.addRow("メモ:", self.memo_edit)
         form_layout.addRow("ファイル名:", self.filename_preview_label)
         form_layout.addRow(self.save_button)
@@ -404,6 +409,7 @@ class FileRegistrationTab(QWidget):
         self.issue_date_edit.textChanged.connect(self.check_save_button_state)
         self.client_name_edit.textChanged.connect(self.check_save_button_state)
         self.amount_edit.textChanged.connect(self.check_save_button_state)
+        self.amount_edit.textChanged.connect(self._check_amount_leading_zero)
         self.issue_date_edit.textChanged.connect(self.update_doc_id)
         self.document_type_combo.currentIndexChanged.connect(self.update_doc_id)
         self.issue_date_edit.textChanged.connect(self.update_filename_preview)
@@ -1099,6 +1105,14 @@ class FileRegistrationTab(QWidget):
 
         filename = f"{doc_id}_{issue_date}_{amount}_{client_name}.pdf"
         self.filename_preview_label.setText(filename)
+
+    def _check_amount_leading_zero(self, text: str):
+        """金額が「0」始まり（複数桁）の場合に警告ラベルを表示する。
+        OCRが「6090」を「0690」のように誤認識するケースを検出するためのもの。"""
+        if text and text[0] == '0' and len(text) > 1:
+            self.amount_warning_label.show()
+        else:
+            self.amount_warning_label.hide()
 
     def check_save_button_state(self):
         issue_date = self.issue_date_edit.text()

@@ -16,6 +16,10 @@ class Validator:
                 cleaned_amount += char
             elif char == '-' and not cleaned_amount: # Only allow '-' at the very beginning
                 cleaned_amount += char
+        # 先頭ゼロを除去する（例: OCRが "6090" を "0690" と誤認識した場合など）
+        # "0" 単体（金額ゼロ）は保持、"0xxx" 形式のみ strip する
+        if cleaned_amount and cleaned_amount[0] == '0' and len(cleaned_amount) > 1:
+            cleaned_amount = cleaned_amount.lstrip('0') or '0'
         return cleaned_amount
 
     def is_valid_amount(self, amount_str):
