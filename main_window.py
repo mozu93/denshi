@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QMenuBar, QMessageBox, QApplication
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QMenuBar, QMessageBox, QApplication, QLabel
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QTimer
 from views.file_registration_tab import FileRegistrationTab
@@ -74,6 +74,7 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("準備完了")
+        self._check_ocr_engine()
 
         _progress(95, "起動処理を開始中...")
         if not root_save_directory:
@@ -218,6 +219,17 @@ class MainWindow(QMainWindow):
             self.config_manager.set_ui_font_size(DEFAULT_FONT_SIZE)
         except Exception:
             pass
+
+    def _check_ocr_engine(self):
+        """ndlocr-lite が未インストールの場合、ステータスバーに常時警告を表示する。"""
+        from models.ocr_processor import _NDL_PYTHON
+        if not os.path.exists(_NDL_PYTHON):
+            warn = QLabel(
+                "⚠ OCRエンジン未インストール　―　"
+                "最新のインストーラーを再実行し「OCRエンジンをインストールする」にチェックを入れてください。"
+            )
+            warn.setStyleSheet("color: #cc0000; font-weight: bold; padding: 0 8px;")
+            self.status_bar.addPermanentWidget(warn)
 
     def _check_for_updates(self):
         """アップデートをバックグラウンドでチェックします（メインスレッドから呼ぶこと）。"""
