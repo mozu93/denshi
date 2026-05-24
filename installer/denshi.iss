@@ -8,7 +8,7 @@
 #define MyAppExeName "DenshiChobohozoSystem.exe"
 
 ; バージョン情報（build.pyで自動的に置き換えられる）
-#define MyAppVersion "v2.8.0"
+#define MyAppVersion "v2.9.0"
 
 [Setup]
 ; アプリケーション情報
