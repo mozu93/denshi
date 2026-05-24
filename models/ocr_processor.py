@@ -43,8 +43,12 @@ def _find_ndl_python() -> str:
 
 _NDL_PYTHON = _find_ndl_python()
 
-# このファイルと同じ場所にある常駐サーバースクリプト
-_SERVER_SCRIPT = str(Path(__file__).parent / "ndlocr_server.py")
+# 常駐サーバースクリプトのパスを解決
+# PyInstallerバンドル時は sys._MEIPASS 以下に配置される
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    _SERVER_SCRIPT = str(Path(sys._MEIPASS) / "models" / "ndlocr_server.py")
+else:
+    _SERVER_SCRIPT = str(Path(__file__).parent / "ndlocr_server.py")
 
 
 class _OcrServer:

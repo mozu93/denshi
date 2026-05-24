@@ -19,6 +19,9 @@ from VERSION import __version__, __build_date__, APP_NAME_EN
 datas = [
     ('config.ini', '.'),
     ('styles', 'styles'),
+    # ndlocr_server.py は ndlocr-lite の Python 環境から別プロセスで実行されるため
+    # .py ソースのままデータファイルとして含める必要がある
+    ('models/ndlocr_server.py', 'models'),
 ]
 
 # PyMuPDFのデータファイルを含める
