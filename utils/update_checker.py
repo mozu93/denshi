@@ -157,12 +157,12 @@ def _extract_download_url(release_data: Dict[str, Any]) -> str:
         if assets:
             return assets[0].get('browser_download_url', '')
 
-        # assetsがない場合はリリースページURL
-        return release_data.get('html_url', '')
+        # assetsがない場合はダウンロード不可（ブラウザ誘導に切り替え）
+        return ''
 
     except Exception as e:
         logger.warning(f"ダウンロードURLの抽出に失敗しました: {e}")
-        return release_data.get('html_url', '')
+        return ''
 
 
 def format_version_for_display(version_str: str) -> str:
@@ -198,6 +198,18 @@ def download_installer(
                     received += len(chunk)
                     if progress_callback:
                         progress_callback(received, total)
+
+        # PE ヘッダー検証（MZ マジックバイト）
+        with open(tmp_path, "rb") as f:
+            magic = f.read(2)
+        if magic != b"MZ":
+            os.unlink(tmp_path)
+            logger.error(
+                f"ダウンロードしたファイルが有効な実行ファイルではありません（先頭バイト: {magic!r}）。"
+                "GitHub Release にインストーラーがアップロードされているか確認してください。"
+            )
+            return None
+
         return tmp_path
     except Exception as e:
         logger.error(f"インストーラーのダウンロードに失敗しました: {e}")
