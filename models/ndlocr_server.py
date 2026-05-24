@@ -6,11 +6,16 @@ stdin からファイルパスを受け取って OCR 結果を JSON で stdout �
 このスクリプトは ndlocr-lite の Python 環境で実行される。
 """
 import sys
+import io
 import json
 import os
 import numpy as np
 from pathlib import Path
 from PIL import Image
+
+# Windows で stdout/stderr を強制 UTF-8 にする（CP932 化けを防ぐ）
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", line_buffering=True)
 
 # ocr.py のある site-packages を参照
 BASE_DIR = Path(__file__).resolve().parent
@@ -155,6 +160,6 @@ for raw_line in sys.stdin:
         continue
     try:
         result = run_ocr(img_path)
-        print(json.dumps(result, ensure_ascii=False), flush=True)
+        print(json.dumps(result, ensure_ascii=True), flush=True)
     except Exception as e:
-        print(json.dumps({"error": str(e)}), flush=True)
+        print(json.dumps({"error": str(e)}, ensure_ascii=True), flush=True)

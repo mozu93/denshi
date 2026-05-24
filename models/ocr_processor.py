@@ -83,6 +83,10 @@ class _OcrServer:
         logger.info("ndlocr-lite サーバーを起動中...")
         # Windows でコンソールウィンドウが表示されないよう CREATE_NO_WINDOW を指定
         _cflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        # サブプロセスの標準入出力を強制的に UTF-8 にする
+        _env = os.environ.copy()
+        _env["PYTHONIOENCODING"] = "utf-8"
+        _env["PYTHONUTF8"] = "1"
         proc = subprocess.Popen(
             [_NDL_PYTHON, _SERVER_SCRIPT],
             stdin=subprocess.PIPE,
@@ -92,6 +96,7 @@ class _OcrServer:
             encoding="utf-8",
             bufsize=1,   # 行バッファ
             creationflags=_cflags,
+            env=_env,
         )
 
         # "READY" を待つ（最大120秒）

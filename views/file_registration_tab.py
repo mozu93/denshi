@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QGridLayout, QListWidgetItem, QInputDialog
 )
 from PyQt6.QtGui import QPixmap, QImage, QColor, QPainter, QPen, QAction, QIcon
-from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QBuffer, QIODevice, QPoint, QRect, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QBuffer, QIODevice, QPoint, QRect, QSize, QThread
 from PIL import Image, ImageQt
 
 from models.pdf_processor import PdfProcessor
@@ -29,6 +29,26 @@ from utils.ui_styles import apply_button_style, apply_small_button_style, apply_
 from utils.constants import CATEGORY_EXPENDITURE, CATEGORY_INCOME, CATEGORY_OTHER_ORG
 
 logger = logging.getLogger(__name__)
+
+
+class _OcrWorker(QThread):
+    """OCR をバックグラウンドスレッドで実行するワーカー。"""
+    finished = pyqtSignal(list)   # OCR結果リスト
+    error    = pyqtSignal(str)    # エラーメッセージ
+
+    def __init__(self, image, config_manager):
+        super().__init__()
+        self._image = image
+        self._config_manager = config_manager
+
+    def run(self):
+        try:
+            results = OcrProcessor(self._image, self._config_manager).get_text_and_boxes()
+            self.finished.emit(results or [])
+        except Exception as e:
+            logger.error(f"OCRワーカーエラー: {e}", exc_info=True)
+            self.error.emit(str(e))
+
 
 class SelectablePdfPreviewLabel(QLabel):
     """A QLabel that allows drawing a selection rectangle and emits a signal with the selected region."""
@@ -520,64 +540,62 @@ class FileRegistrationTab(QWidget):
 
         cropped_image = pil_image_high_res.crop((x, y, x + w, y + h))
 
-        # OCR実行中はウェイトカーソル＋ステータス表示
+        # ウェイトカーソル＋ステータス表示
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             main_win = self.window()
             if hasattr(main_win, 'status_bar'):
                 main_win.status_bar.showMessage("OCR読み取り中...（初回のみ約12秒かかります）")
         except Exception:
             pass
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        QApplication.processEvents()
-        ocr_results = []
-        try:
-            ocr_processor = OcrProcessor(cropped_image, self.config_manager)
-            ocr_results = ocr_processor.get_text_and_boxes()
-        except Exception as e:
-            logger.error(f"OCR処理エラー: {e}", exc_info=True)
+
+        # OCR 完了後に呼ばれるコールバック（クロージャでコンテキストを保持）
+        active_field = self.active_field
+        page_w = fitz_pixmap_high_res.width
+        page_h = fitz_pixmap_high_res.height
+
+        def _on_ocr_finished(results):
             QApplication.restoreOverrideCursor()
             try:
-                main_win = self.window()
-                if hasattr(main_win, 'status_bar'):
-                    main_win.status_bar.showMessage("OCRエラー", 3000)
+                mw = self.window()
+                if hasattr(mw, 'status_bar'):
+                    mw.status_bar.showMessage("OCR完了", 3000)
             except Exception:
                 pass
-            QMessageBox.warning(self, "OCRエラー", f"OCRの読み取りに失敗しました。\n\n{e}")
-            return
-        finally:
+            text = "".join([r['text'] for r in results]) if results else ""
+            if active_field is self.issue_date_edit:
+                text = self.date_converter.to_seireki(text)
+            elif active_field is self.amount_edit:
+                text = self.validator._normalize_amount_string(text)
+            active_field.setText(text)
+            self.update_filename_preview()
+            # 学習: OCR領域をページ比率で記録
+            if text:
+                field_name = self._field_to_name(active_field)
+                if field_name:
+                    region_pct = (x / page_w, y / page_h, w / page_w, h / page_h)
+                    self.last_ocr_regions[field_name] = region_pct
+                    issuer = self.client_name_edit.text().strip()
+                    if issuer:
+                        self.learning_manager.learn_ocr_region(issuer, field_name, region_pct)
+
+        def _on_ocr_error(msg):
             QApplication.restoreOverrideCursor()
             try:
-                main_win = self.window()
-                if hasattr(main_win, 'status_bar') and ocr_results is not None:
-                    main_win.status_bar.showMessage("OCR完了", 3000)
+                mw = self.window()
+                if hasattr(mw, 'status_bar'):
+                    mw.status_bar.showMessage("OCRエラー", 3000)
             except Exception:
                 pass
-        if ocr_results:
-            text = "".join([result['text'] for result in ocr_results])
-        else:
-            text = ""
+            QMessageBox.warning(self, "OCRエラー", f"OCRの読み取りに失敗しました。\n\n{msg}")
 
-        if self.active_field is self.issue_date_edit:
-            text = self.date_converter.to_seireki(text)
-            self.active_field.setText(text)
-        elif self.active_field is self.amount_edit:
-            text = self.validator._normalize_amount_string(text)
-            self.active_field.setText(text)
-        else:
-            self.active_field.setText(text)
-        self.update_filename_preview()
-
-        # 学習: OCR領域をページ比率で記録し、取引先が判明していれば即座に保存
-        if text:
-            field_name = self._field_to_name(self.active_field)
-            if field_name:
-                page_w = fitz_pixmap_high_res.width
-                page_h = fitz_pixmap_high_res.height
-                region_pct = (x / page_w, y / page_h, w / page_w, h / page_h)
-                self.last_ocr_regions[field_name] = region_pct
-                issuer = self.client_name_edit.text().strip()
-                if issuer:
-                    self.learning_manager.learn_ocr_region(issuer, field_name, region_pct)
+        # ワーカースレッドで OCR 実行（UI フリーズ防止）
+        worker = _OcrWorker(cropped_image, self.config_manager)
+        worker.finished.connect(_on_ocr_finished)
+        worker.error.connect(_on_ocr_error)
+        # GC されないようインスタンス変数に保持
+        self._ocr_worker = worker
+        worker.start()
 
     def _try_auto_extract(self, item):
         """テキストPDFから帳票情報を自動抽出して空フィールドに入力する"""
