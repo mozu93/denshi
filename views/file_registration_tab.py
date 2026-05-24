@@ -36,8 +36,10 @@ def _dedup_ocr_text(results: list) -> str:
     """
     ndlocr-liteのOCR結果リストからテキストを結合する。
     ・複数の検出結果に同じテキストが含まれる場合は重複除去
-    ・単一の認識結果が繰り返しパターンになっている場合も除去
-    　例: '三重交通三重交通' → '三重交通', '124500124500' → '124500'
+    ・単一の認識結果が繰り返しパターン（部分繰り返し含む）になっている場合も除去
+    　例: '三重交通三重交通' → '三重交通'
+    　例: '124500124500124500' → '124500'
+    　例: '224000224000224' → '224000' (完全2回 + 部分1回)
     """
     # 重複結果を除去しながら結合
     seen: set = set()
@@ -49,14 +51,35 @@ def _dedup_ocr_text(results: list) -> str:
             unique_parts.append(t)
     text = "".join(unique_parts)
 
-    # 単一文字列内の繰り返しパターンを除去
-    if len(text) >= 2:
-        half = len(text) // 2
-        for unit_len in range(1, half + 1):
-            if len(text) % unit_len == 0:
-                unit = text[:unit_len]
-                if unit * (len(text) // unit_len) == text:
-                    return unit
+    n = len(text)
+    if n < 4:
+        return text
+
+    # 最小単位を 2 にして '1212'→'12' は許容するが '11'→'1' のような過剰削除は防止
+    for unit_len in range(2, n // 2 + 1):
+        unit = text[:unit_len]
+        # 少なくとも完全2回の繰り返しが必要
+        if text[unit_len:2 * unit_len] != unit:
+            continue
+        # 残りの部分が「完全繰り返し」または「末尾のみ unit のプレフィックス」になっているか
+        valid = True
+        i = 2 * unit_len
+        while i < n:
+            remaining = n - i
+            if remaining >= unit_len:
+                if text[i:i + unit_len] == unit:
+                    i += unit_len
+                else:
+                    valid = False
+                    break
+            else:
+                if text[i:] == unit[:remaining]:
+                    i = n
+                else:
+                    valid = False
+                    break
+        if valid:
+            return unit
     return text
 
 
