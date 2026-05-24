@@ -32,6 +32,34 @@ from utils.constants import CATEGORY_EXPENDITURE, CATEGORY_INCOME, CATEGORY_OTHE
 logger = logging.getLogger(__name__)
 
 
+def _dedup_ocr_text(results: list) -> str:
+    """
+    ndlocr-liteのOCR結果リストからテキストを結合する。
+    ・複数の検出結果に同じテキストが含まれる場合は重複除去
+    ・単一の認識結果が繰り返しパターンになっている場合も除去
+    　例: '三重交通三重交通' → '三重交通', '124500124500' → '124500'
+    """
+    # 重複結果を除去しながら結合
+    seen: set = set()
+    unique_parts: list = []
+    for r in (results or []):
+        t = r.get('text', '').strip()
+        if t and t not in seen:
+            seen.add(t)
+            unique_parts.append(t)
+    text = "".join(unique_parts)
+
+    # 単一文字列内の繰り返しパターンを除去
+    if len(text) >= 2:
+        half = len(text) // 2
+        for unit_len in range(1, half + 1):
+            if len(text) % unit_len == 0:
+                unit = text[:unit_len]
+                if unit * (len(text) // unit_len) == text:
+                    return unit
+    return text
+
+
 class _OcrWorker(QThread):
     """OCR をバックグラウンドスレッドで実行するワーカー。"""
     finished = pyqtSignal(list)   # OCR結果リスト
@@ -573,15 +601,7 @@ class FileRegistrationTab(QWidget):
                     mw.status_bar.showMessage("OCR完了", 3000)
             except Exception:
                 pass
-            # ndlocr-liteが同じ領域を複数回検出する場合があるため重複テキストを除去してから結合
-            seen: set = set()
-            unique_parts = []
-            for r in (results or []):
-                t = r.get('text', '').strip()
-                if t and t not in seen:
-                    seen.add(t)
-                    unique_parts.append(t)
-            text = "".join(unique_parts)
+            text = _dedup_ocr_text(results)
             if active_field is self.issue_date_edit:
                 text = self.date_converter.to_seireki(text)
             elif active_field is self.amount_edit:
@@ -853,15 +873,7 @@ class FileRegistrationTab(QWidget):
             cropped = pil_image.crop((x, y, x + w, y + h))
             try:
                 ocr_results = OcrProcessor(cropped, self.config_manager).get_text_and_boxes()
-                # 重複テキストを除去してから結合
-                _seen: set = set()
-                _uniq = []
-                for _r in (ocr_results or []):
-                    _t = _r.get('text', '').strip()
-                    if _t and _t not in _seen:
-                        _seen.add(_t)
-                        _uniq.append(_t)
-                text = "".join(_uniq)
+                text = _dedup_ocr_text(ocr_results)
                 if not text:
                     continue
                 if field_widget is self.issue_date_edit:
