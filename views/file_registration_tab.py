@@ -573,7 +573,15 @@ class FileRegistrationTab(QWidget):
                     mw.status_bar.showMessage("OCR完了", 3000)
             except Exception:
                 pass
-            text = "".join([r['text'] for r in results]) if results else ""
+            # ndlocr-liteが同じ領域を複数回検出する場合があるため重複テキストを除去してから結合
+            seen: set = set()
+            unique_parts = []
+            for r in (results or []):
+                t = r.get('text', '').strip()
+                if t and t not in seen:
+                    seen.add(t)
+                    unique_parts.append(t)
+            text = "".join(unique_parts)
             if active_field is self.issue_date_edit:
                 text = self.date_converter.to_seireki(text)
             elif active_field is self.amount_edit:
@@ -845,7 +853,15 @@ class FileRegistrationTab(QWidget):
             cropped = pil_image.crop((x, y, x + w, y + h))
             try:
                 ocr_results = OcrProcessor(cropped, self.config_manager).get_text_and_boxes()
-                text = "".join(r['text'] for r in ocr_results) if ocr_results else ""
+                # 重複テキストを除去してから結合
+                _seen: set = set()
+                _uniq = []
+                for _r in (ocr_results or []):
+                    _t = _r.get('text', '').strip()
+                    if _t and _t not in _seen:
+                        _seen.add(_t)
+                        _uniq.append(_t)
+                text = "".join(_uniq)
                 if not text:
                     continue
                 if field_widget is self.issue_date_edit:
