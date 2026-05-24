@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import io
 import logging
@@ -17,7 +18,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QBuffer, QIODevice, QPoint, QRe
 from PIL import Image, ImageQt
 
 from models.pdf_processor import PdfProcessor
-from models.ocr_processor import OcrProcessor
+from models.ocr_processor import OcrProcessor, _OcrServer
 from models.pdf_text_extractor import PdfTextExtractor
 from models.learning_manager import LearningManager
 from utils.date_converter import DateConverter
@@ -112,9 +113,19 @@ class FileRegistrationTab(QWidget):
         self.processed_file_manager = ProcessedFileManager()
         self.client_manager = ClientManager(config_manager)
         self.pdf_text_extractor = PdfTextExtractor()
-        _learning_path = os.path.normpath(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'learning_data.json')
-        )
+        # frozen（インストール済みexe）の場合は APPDATA に保存（Program Files は書き込み禁止）
+        if getattr(sys, 'frozen', False):
+            _appdata = os.environ.get('APPDATA', '')
+            if _appdata:
+                _user_data_dir = os.path.join(_appdata, 'DenshiChobohozoSystem')
+                os.makedirs(_user_data_dir, exist_ok=True)
+                _learning_path = os.path.join(_user_data_dir, 'learning_data.json')
+            else:
+                _learning_path = os.path.join(os.path.dirname(sys.executable), 'learning_data.json')
+        else:
+            _learning_path = os.path.normpath(
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'learning_data.json')
+            )
         self.learning_manager = LearningManager(_learning_path)
         self.last_ocr_regions: dict = {}  # field_name -> (x_pct, y_pct, w_pct, h_pct)
         self.last_reg_number: Optional[str] = None  # 現在表示中PDFの登録番号
@@ -683,6 +694,10 @@ class FileRegistrationTab(QWidget):
 
     def _extract_client_from_ocr(self, file_path: str):
         """ndlocr-lite で 1 ページ目全体をOCRして企業名を抽出するフォールバック。"""
+        # メインスレッドフリーズ防止: サーバーがまだ起動中の場合はスキップ
+        if _OcrServer.get()._proc is None:
+            logger.debug("OCRサーバー起動中のため取引先名OCRフォールバックをスキップ")
+            return None
         try:
             import fitz
             _CORP_SUFFIX = (
@@ -794,6 +809,10 @@ class FileRegistrationTab(QWidget):
         # 対象フィールドが全て入力済みなら早期リターン
         target_fields = {k: v for k, v in field_map.items() if k in regions and not v.text()}
         if not target_fields:
+            return []
+        # メインスレッドフリーズ防止: サーバーがまだ起動中の場合はスキップ
+        if _OcrServer.get()._proc is None:
+            logger.debug("OCRサーバー起動中のため学習OCR適用をスキップ")
             return []
 
         pdf_processor = PdfProcessor(file_path)
