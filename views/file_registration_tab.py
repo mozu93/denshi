@@ -101,7 +101,7 @@ def _remove_repetition_pattern(text: str) -> str:
 
 def _dedup_ocr_text(results: list) -> str:
     """
-    ndlocr-liteのOCR結果リストからテキストを結合し、繰り返しパターンを除去する。
+    OCR結果リストからテキストを結合し、繰り返しパターンを除去する。
     """
     seen: set = set()
     unique_parts: list = []
@@ -643,7 +643,7 @@ class FileRegistrationTab(QWidget):
             if not self._wait_for_page_ocr_sync(file_path):
                 QMessageBox.warning(
                     self, "OCRエラー",
-                    "OCRの実行に失敗しました。\nOCRエンジンが正しくインストールされているか確認してください。"
+                    "OCRの実行に失敗しました。\nWindows の日本語言語パックがインストールされているか確認してください。"
                 )
                 return
 
@@ -711,7 +711,7 @@ class FileRegistrationTab(QWidget):
                 result.client_name = cached
                 result.field_confidences['client_name'] = 0.95
 
-        # 取引先名が未取得の場合、ndlocr-lite 全ページOCRでフォールバック
+        # 取引先名が未取得の場合、Windows OCR キャッシュでフォールバック
         if (not result.client_name
                 or result.field_confidences.get('client_name', 0) < PdfTextExtractor.CONFIDENCE_THRESHOLD):
             ocr_client = self._extract_client_from_ocr(file_path)

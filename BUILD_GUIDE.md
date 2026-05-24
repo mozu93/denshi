@@ -38,21 +38,6 @@
 3. installer/icon.ico として保存
 ```
 
-### 2. Tesseract OCRインストーラー（オプション）
-
-**推奨**: `installer/tesseract-installer.exe`
-
-Tesseract OCRをインストーラーに同梱する場合は、以下の手順で準備します。
-
-```bash
-1. https://github.com/UB-Mannheim/tesseract/wiki にアクセス
-2. 最新版の64bit版をダウンロード
-   例: tesseract-ocr-w64-setup-5.3.3.20231005.exe
-3. ダウンロードしたファイルを installer/tesseract-installer.exe にリネームして配置
-```
-
-**注意**: Tesseractインストーラーはファイルサイズが大きいため、Gitリポジトリには含めないでください。
-
 ## ビルド手順
 
 ### ステップ1: 依存関係のインストール
@@ -239,7 +224,7 @@ APP_PUBLISHER = "Your Organization"  # 組織名
 - 発行者情報
 - インストール先
 - デスクトップアイコンのデフォルト設定
-- Tesseract OCRの自動インストール有効化
+- インストール後の起動オプション設定
 
 ### PyInstallerのカスタマイズ
 

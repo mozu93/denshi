@@ -39,38 +39,6 @@ jobs:
         shell: pwsh
         run: choco install innosetup --yes --no-progress
 
-      - name: Download Tesseract installer
-        shell: pwsh
-        run: |
-          try {
-            $headers = @{ "User-Agent" = "GitHub-Actions" }
-            $release = Invoke-RestMethod `
-              -Uri "https://api.github.com/repos/UB-Mannheim/tesseract/releases/latest" `
-              -Headers $headers
-            $asset = $release.assets |
-              Where-Object { $_.name -match "tesseract-ocr-w64-setup.*\.exe$" } |
-              Select-Object -First 1
-            if (-not $asset) {
-              $asset = $release.assets |
-                Where-Object { $_.name -match ".*setup.*\.exe$" } |
-                Select-Object -First 1
-            }
-            if ($asset) {
-              Write-Host "Downloading: $($asset.name)"
-              Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "installer\tesseract-installer.exe"
-              Write-Host "Download complete"
-            } else {
-              throw "No matching Tesseract installer found in release assets"
-            }
-          } catch {
-            Write-Warning "Tesseract download failed: $_"
-            Write-Warning "Creating minimal placeholder (Tesseract option will not work)"
-            [System.IO.File]::WriteAllBytes(
-              "installer\tesseract-installer.exe",
-              [byte[]]@(0x4D, 0x5A, 0x00, 0x00)
-            )
-          }
-
       - name: Build executable and installer
         shell: pwsh
         run: python build.py
@@ -88,9 +56,8 @@ jobs:
             3. 画面の指示に従ってインストール
 
             ### 注意事項
-            - OCR機能を使用するには Tesseract OCR が必要です
-            - インストーラー実行時に「Tesseract OCRをインストールする」オプションを選択できます
-            - Tesseract OCR インストール済みの場合はオプションのチェックが自動で外れます
+            - OCR機能は Windows 10/11 標準搭載エンジンを使用するため追加インストール不要です
+            - 日本語 OCR には Windows の日本語言語パックが必要です（通常はインストール済み）
 
             ※ 管理者権限が必要です。
           files: installer/Output/DenshiChobohozoSystem_${{ steps.ver.outputs.VERSION }}_setup.exe

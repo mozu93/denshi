@@ -41,9 +41,8 @@ python build.py
 ```
 
 ### Prerequisites
-- Tesseract OCR must be installed for text recognition functionality
-- Japanese language data (jpn.traineddata) required for OCR
-- Default Tesseract path: `C:/Program Files/Tesseract-OCR/tesseract.exe`
+- Windows 10/11 (64bit) with Japanese language pack for OCR functionality
+- OCR uses Windows OCR (WinRT) built into the OS — no additional installation required
 
 ## Architecture
 
@@ -64,7 +63,7 @@ denshi/
 │   └── README.md             # Resource requirements
 ├── models/               # Data processing layer
 │   ├── metadata_manager.py    # CSV-based document metadata
-│   ├── ocr_processor.py       # Tesseract OCR integration
+│   ├── ocr_processor.py       # Windows OCR (WinRT) integration
 │   └── pdf_processor.py       # PyMuPDF document handling
 ├── views/                # UI components (PyQt6)
 │   ├── file_registration_tab.py  # PDF registration interface
@@ -95,8 +94,8 @@ denshi/
 - Supports search, update, delete operations
 
 **OcrProcessor** (`models/ocr_processor.py`):
-- Tesseract integration for Japanese text recognition
-- Supports user-selected regions in PDF preview
+- Windows OCR (WinRT) integration for Japanese text recognition
+- Page-level OCR caching for instant region-selection response
 - Automatic extraction of amounts, dates, client names
 
 **ConfigManager** (`utils/config_manager.py`):
@@ -146,12 +145,12 @@ Example: `001_20240901_10800_株式会社サンプル.pdf`
 - **Unified Styling**: Consistent Meiryo font and gray color scheme throughout
 - **Multi-launch Support**: Both double-click and command-line execution
 - **Automatic Updates**: GitHub Releases integration with startup update checks
-- **Windows Installer**: Inno Setup-based installer with Tesseract OCR bundling
+- **Windows Installer**: Inno Setup-based installer (no external OCR engine required)
 
 ## Configuration
 
 The application uses `config.ini` for settings:
-- **Paths**: Root save directory, Tesseract OCR path
+- **Paths**: Root save directory
 - **UI**: Font size, window dimensions, splitter positions
 - **Categories**: Expenditure/Income document types
 - **Last Inputs**: Remembers user's last selected year and document type

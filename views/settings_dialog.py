@@ -73,28 +73,32 @@ class SettingsDialog(QDialog):
         root_dir_group.setLayout(root_dir_group_layout)
         self.left_layout.addWidget(root_dir_group)
 
-        # OCR設定（ndlocr-lite）
+        # OCR設定（Windows OCR）
         ocr_group = QGroupBox("OCR設定")
         ocr_group_layout = QVBoxLayout()
-        import shutil, os
-        ndl_path = shutil.which("ndlocr-lite") or os.path.expanduser(r"~\.local\bin\ndlocr-lite.exe")
-        ndl_found = ndl_path and os.path.exists(ndl_path)
-        ocr_status_label = QLabel(
-            f"OCRエンジン: ndlocr-lite\n"
-            f"パス: {ndl_path or '未検出'}\n"
-            f"状態: {'✓ 検出済み' if ndl_found else '✗ 未インストール'}"
-        )
-        ocr_status_label.setStyleSheet(
-            "color: #2a7a2a;" if ndl_found else "color: #c0392b;"
-        )
-        ocr_group_layout.addWidget(ocr_status_label)
-        if not ndl_found:
-            install_label = QLabel(
-                "インストール方法: コマンドプロンプトで以下を実行\n"
-                "  uv tool install git+https://github.com/ndl-lab/ndlocr-lite"
+        try:
+            from winsdk.windows.media.ocr import OcrEngine
+            from winsdk.windows.globalization import Language
+            ja_supported = OcrEngine.is_language_supported(Language("ja"))
+            ocr_status_label = QLabel(
+                f"OCRエンジン: Windows OCR (WinRT)\n"
+                f"日本語サポート: {'✓ 有効' if ja_supported else '✗ 言語パック未インストール'}"
             )
-            install_label.setStyleSheet("color: #888; font-size: 9pt;")
-            ocr_group_layout.addWidget(install_label)
+            ocr_status_label.setStyleSheet(
+                "color: #2a7a2a;" if ja_supported else "color: #c0392b;"
+            )
+            ocr_group_layout.addWidget(ocr_status_label)
+            if not ja_supported:
+                hint_label = QLabel(
+                    "Windowsの設定 → 言語 → 日本語 → オプション\n"
+                    "から「基本入力」または「OCR」言語パックをインストールしてください。"
+                )
+                hint_label.setStyleSheet("color: #888; font-size: 9pt;")
+                ocr_group_layout.addWidget(hint_label)
+        except Exception:
+            ocr_status_label = QLabel("OCRエンジン: Windows OCR (WinRT)\n状態: winsdk パッケージが見つかりません")
+            ocr_status_label.setStyleSheet("color: #c0392b;")
+            ocr_group_layout.addWidget(ocr_status_label)
         ocr_group.setLayout(ocr_group_layout)
         self.left_layout.addWidget(ocr_group)
 
