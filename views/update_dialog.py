@@ -47,7 +47,7 @@ class UpdateDialog(QDialog):
 
     def _init_ui(self):
         self.setWindowTitle("アップデートの確認")
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(580)
 
         layout = QVBoxLayout()
 
@@ -158,6 +158,7 @@ class UpdateDialog(QDialog):
                     self._installer_path = item[1]
                     self.progress_bar.setValue(100)
                     self.progress_label.setText("ダウンロード完了！インストールできます。")
+                    self.download_button.setVisible(False)
                     self.install_button.setVisible(True)
                 elif item[0] == 'failed':
                     self.download_button.setEnabled(True)

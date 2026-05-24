@@ -120,15 +120,23 @@ def check_for_updates() -> Optional[UpdateInfo]:
 
 
 def _clean_release_notes(body: str) -> str:
-    """リリースノートからインストール方法セクションを除去し、表示用に整形する。"""
+    """リリースノートからインストール方法セクションを除去し、プレーンテキストに整形する。"""
     # 「### インストール方法」または「## インストール方法」セクションを削除
-    # （次の見出し行まで、または末尾まで）
     body = re.sub(
         r'#{1,3}\s*インストール方法.*?(?=\n#{1,3}\s|\Z)',
         '',
         body,
         flags=re.DOTALL
     )
+    # Markdown見出し（## / ###）をプレーンテキストに変換
+    body = re.sub(r'^#{1,6}\s*', '', body, flags=re.MULTILINE)
+    # 箇条書き（- / * / 数字.）をプレーンテキストに変換
+    body = re.sub(r'^[\-\*]\s+', '・', body, flags=re.MULTILINE)
+    body = re.sub(r'^\d+\.\s+', '・', body, flags=re.MULTILINE)
+    # 強調（**bold**）を除去
+    body = re.sub(r'\*{1,2}(.+?)\*{1,2}', r'\1', body)
+    # バッククォート除去
+    body = re.sub(r'`(.+?)`', r'\1', body)
     # 連続する空行を1行にまとめて整形
     body = re.sub(r'\n{3,}', '\n\n', body)
     return body.strip()[:600]
