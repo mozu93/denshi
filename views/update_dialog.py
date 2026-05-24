@@ -85,11 +85,6 @@ class UpdateDialog(QDialog):
 
         layout.addSpacing(4)
 
-        self.skip_checkbox = QCheckBox(
-            f"このバージョン ({self.update_info.latest_version}) をスキップ"
-        )
-        layout.addWidget(self.skip_checkbox)
-
         button_layout = QHBoxLayout()
 
         if self.update_info.download_url:
@@ -111,7 +106,7 @@ class UpdateDialog(QDialog):
         self.later_button.clicked.connect(self.reject)
         button_layout.addWidget(self.later_button)
 
-        self.skip_button = QPushButton("スキップ")
+        self.skip_button = QPushButton("このバージョンをスキップ")
         self.skip_button.clicked.connect(self._on_skip_clicked)
         button_layout.addWidget(self.skip_button)
 
@@ -184,14 +179,13 @@ class UpdateDialog(QDialog):
             subprocess.Popen([self._installer_path])
 
     def _on_skip_clicked(self):
-        if self.skip_checkbox.isChecked():
-            try:
-                self.config_manager.set(
-                    'Update', 'skip_version', self.update_info.latest_version
-                )
-            except Exception:
-                pass
-            logger.info(f"バージョン {self.update_info.latest_version} をスキップしました")
+        try:
+            self.config_manager.set(
+                'Update', 'skip_version', self.update_info.latest_version
+            )
+        except Exception:
+            pass
+        logger.info(f"バージョン {self.update_info.latest_version} をスキップしました")
         self.reject()
 
     def closeEvent(self, event):

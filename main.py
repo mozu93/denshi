@@ -95,14 +95,24 @@ def main():
     config_path = get_config_path(base_path)
 
     splash.update_progress(20, "アプリケーションを初期化中...")
-    main_win = MainWindow(
-        config_file=config_path,
-        progress_callback=splash.update_progress,
-    )
-
-    splash.update_progress(100, "準備完了")
-    main_win.show()
-    splash.close()
+    try:
+        main_win = MainWindow(
+            config_file=config_path,
+            progress_callback=splash.update_progress,
+        )
+        splash.update_progress(100, "準備完了")
+        main_win.show()
+    except Exception as e:
+        logger.error(f"アプリケーションの起動に失敗しました: {e}", exc_info=True)
+        splash.close()
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.critical(
+            None, "起動エラー",
+            f"アプリケーションの起動中にエラーが発生しました。\n\n{e}"
+        )
+        sys.exit(1)
+    finally:
+        splash.close()
 
     # Windows APIで直接HWNDにアイコンをセット（タスクバー反映に必要）
     if os.path.exists(icon_path):

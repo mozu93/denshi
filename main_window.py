@@ -236,6 +236,12 @@ class MainWindow(QMainWindow):
             pass
 
         try:
+            from models.ocr_processor import OcrProcessor
+            OcrProcessor.shutdown()
+        except Exception:
+            pass
+
+        try:
             if hasattr(self.registration_tab, 'save_splitter_sizes'):
                 self.registration_tab.save_splitter_sizes()
             if hasattr(self.search_tab, 'save_splitter_sizes'):

@@ -40,18 +40,3 @@ def get_application_path():
         # 開発環境: スクリプトのディレクトリ
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def get_tesseract_path():
-    """
-    Tesseract OCRのパスを取得します。
-
-    Returns:
-        str: 開発環境ではシステムインストールパス、
-             インストール環境では同梱Tesseractのパス
-    """
-    if getattr(sys, 'frozen', False):
-        # インストール環境: 同梱Tesseract
-        app_path = get_application_path()
-        return os.path.join(app_path, 'Tesseract-OCR', 'tesseract.exe')
-    else:
-        # 開発環境: システムインストール
-        return r"C:/Program Files/Tesseract-OCR/tesseract.exe"

@@ -4,9 +4,33 @@
       "Bash(python:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(git tag *)",
+      "Bash(git push *)",
+      "Bash(gh run *)",
+      "Bash(pip show *)",
+      "Bash(git commit -m ' *)",
+      "Bash(Start-Sleep -Seconds 5)",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(python main.py)",
+      "Read(//tmp/**)",
+      "Bash(powershell *)",
+      "WebFetch(domain:www.nta.go.jp)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh api *)",
+      "Bash(Get-ChildItem \"C:\\\\Users\\\\taka\\\\Downloads\\\\請求書\")",
+      "Bash(Select-Object -First 10 Name)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\taka\\\\Downloads\\\\請求書\\\\請求書\" | ForEach-Object { $_.Name })",
+      "Bash(del tmp_debug.py tmp_debug2.py tmp_debug3.py tmp_debug4.py)",
+      "Bash(del tmp_inspect.py tmp_inspect2.py tmp_inspect3.py tmp_inspect4.py tmp_inspect5.py tmp_test_new.py tmp_uq_test.py)",
+      "Bash(dir tmp_*)",
+      "WebFetch(domain:api.github.com)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "serena"
+  ]
 }

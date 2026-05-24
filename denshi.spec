@@ -46,7 +46,6 @@ hiddenimports = [
     'PyQt6.QtGui',
     'PyQt6.QtWidgets',
     'PyQt6.sip',
-    'pytesseract',
     'fitz',
     'pandas',
     'pandas._libs',

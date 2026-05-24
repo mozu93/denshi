@@ -6,6 +6,7 @@ GitHub Releases APIを使用して、アプリケーションの最新バージ�
 
 import logging
 import os
+import re
 import sys
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
@@ -89,11 +90,12 @@ def check_for_updates() -> Optional[UpdateInfo]:
             logger.info(f"最新バージョンを使用中です（最新: {latest_version}）")
 
         # アップデート情報を構築
+        raw_notes = release_data.get('body', '更新情報はありません。')
         update_info = UpdateInfo(
             current_version=__version__,
             latest_version=f"v{latest_version}",
             release_url=release_data.get('html_url', ''),
-            release_notes=release_data.get('body', '更新情報はありません。')[:500],  # 先頭500文字
+            release_notes=_clean_release_notes(raw_notes),
             download_url=_extract_download_url(release_data),
             is_newer=is_newer
         )
@@ -115,6 +117,21 @@ def check_for_updates() -> Optional[UpdateInfo]:
     except Exception as e:
         logger.error(f"予期しないエラーが発生しました: {e}", exc_info=True)
         return None
+
+
+def _clean_release_notes(body: str) -> str:
+    """リリースノートからインストール方法セクションを除去し、表示用に整形する。"""
+    # 「### インストール方法」または「## インストール方法」セクションを削除
+    # （次の見出し行まで、または末尾まで）
+    body = re.sub(
+        r'#{1,3}\s*インストール方法.*?(?=\n#{1,3}\s|\Z)',
+        '',
+        body,
+        flags=re.DOTALL
+    )
+    # 連続する空行を1行にまとめて整形
+    body = re.sub(r'\n{3,}', '\n\n', body)
+    return body.strip()[:600]
 
 
 def _extract_download_url(release_data: Dict[str, Any]) -> str:

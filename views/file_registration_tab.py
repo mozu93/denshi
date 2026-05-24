@@ -142,7 +142,10 @@ class FileRegistrationTab(QWidget):
         self.scroll_area = QScrollArea()
         self.pdf_preview_label = SelectablePdfPreviewLabel()
 
-        self.ocr_instruction_label = QLabel("入力したい項目を選択後、右のPDF上で範囲をドラッグしてOCRで読み取れます。")
+        self.ocr_instruction_label = QLabel(
+            "入力したい項目を選択後、右のPDF上で範囲をドラッグしてOCRで読み取れます。\n"
+            "※ 初回のみ約12秒かかります。2回目以降は快適に読み取れます。"
+        )
         self.transaction_type_expenditure_radio = QRadioButton("支出情報")
         self.transaction_type_income_radio = QRadioButton("収入情報")
         self.transaction_type_other_org_radio = QRadioButton("その他団体")
@@ -517,8 +520,26 @@ class FileRegistrationTab(QWidget):
 
         cropped_image = pil_image_high_res.crop((x, y, x + w, y + h))
 
-        ocr_processor = OcrProcessor(cropped_image, self.config_manager)
-        ocr_results = ocr_processor.get_text_and_boxes()
+        # OCR実行中はウェイトカーソル＋ステータス表示
+        try:
+            main_win = self.window()
+            if hasattr(main_win, 'status_bar'):
+                main_win.status_bar.showMessage("OCR読み取り中...（初回のみ約12秒かかります）")
+        except Exception:
+            pass
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+        try:
+            ocr_processor = OcrProcessor(cropped_image, self.config_manager)
+            ocr_results = ocr_processor.get_text_and_boxes()
+        finally:
+            QApplication.restoreOverrideCursor()
+            try:
+                main_win = self.window()
+                if hasattr(main_win, 'status_bar'):
+                    main_win.status_bar.showMessage("OCR完了", 3000)
+            except Exception:
+                pass
         if ocr_results:
             text = "".join([result['text'] for result in ocr_results])
         else:
