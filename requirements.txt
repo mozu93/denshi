@@ -6,3 +6,4 @@ pandas
 pytz
 send2trash
 filelock
+winsdk

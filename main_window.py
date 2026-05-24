@@ -221,15 +221,19 @@ class MainWindow(QMainWindow):
             pass
 
     def _check_ocr_engine(self):
-        """ndlocr-lite が未インストールの場合、ステータスバーに常時警告を表示する。"""
-        from models.ocr_processor import _NDL_PYTHON
-        if not os.path.exists(_NDL_PYTHON):
-            warn = QLabel(
-                "⚠ OCRエンジン未インストール　―　"
-                "最新のインストーラーを再実行し「OCRエンジンをインストールする」にチェックを入れてください。"
-            )
-            warn.setStyleSheet("color: #cc0000; font-weight: bold; padding: 0 8px;")
-            self.status_bar.addPermanentWidget(warn)
+        """Windows OCR（WinRT）の日本語サポートを確認する。"""
+        try:
+            from winsdk.windows.media.ocr import OcrEngine
+            from winsdk.windows.globalization import Language
+            if not OcrEngine.is_language_supported(Language("ja")):
+                warn = QLabel(
+                    "⚠ Windows OCR 日本語未対応　―　"
+                    "Windowsの設定で日本語言語パックをインストールしてください。"
+                )
+                warn.setStyleSheet("color: #cc0000; font-weight: bold; padding: 0 8px;")
+                self.status_bar.addPermanentWidget(warn)
+        except Exception:
+            pass
 
     def _check_for_updates(self):
         """アップデートをバックグラウンドでチェックします（メインスレッドから呼ぶこと）。"""

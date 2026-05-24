@@ -8,7 +8,7 @@
 #define MyAppExeName "DenshiChobohozoSystem.exe"
 
 ; バージョン情報（build.pyで自動的に置き換えられる）
-#define MyAppVersion "v2.7.6"
+#define MyAppVersion "v2.8.0"
 
 [Setup]
 ; アプリケーション情報
@@ -41,7 +41,6 @@ Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 [Tasks]
 Name: "desktopicon"; Description: "デスクトップアイコンを作成する(&D)"; GroupDescription: "追加のアイコン:"
 Name: "quicklaunchicon"; Description: "クイック起動アイコンを作成する(&Q)"; GroupDescription: "追加のアイコン:"; Flags: unchecked
-Name: "install_ndlocr"; Description: "OCRエンジン（ndlocr-lite）をインストールする（インターネット接続が必要です）"; GroupDescription: "OCR機能:"
 
 ; ファイルのインストール
 [Files]
@@ -51,8 +50,6 @@ Source: "..\dist\{#MyAppNameEn}\*"; DestDir: "{app}"; Flags: ignoreversion recur
 ; 初期設定ファイル（ユーザーデータディレクトリに配置）
 Source: "..\config.ini"; DestDir: "{userappdata}\{#MyAppNameEn}"; Flags: onlyifdoesntexist uninsneveruninstall
 
-; OCRインストールスクリプト（タスク選択時のみ）
-Source: "install_ndlocr.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall; Tasks: install_ndlocr
 
 ; アイコンの作成
 [Icons]
@@ -63,13 +60,6 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Fil
 
 ; 実行処理
 [Run]
-; OCRエンジンのインストール（タスク選択時のみ・アプリ起動より前に実行）
-Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\install_ndlocr.ps1"""; \
-  StatusMsg: "OCRエンジンをインストールしています（数分かかります）..."; \
-  Flags: waituntilterminated runhidden; \
-  Tasks: install_ndlocr
-
 ; インストール完了後にアプリケーションを起動（ユーザーが選択可能）
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
@@ -87,43 +77,6 @@ japanese.WelcomeLabel1=ようこそ、[name] セットアップウィザード�
 japanese.WelcomeLabel2=このプログラムは、電子帳簿保存法に対応した電子取引データの管理を支援します。%n%n続行する前に、他のすべてのアプリケーションを終了してください。
 
 [Code]
-// ndlocr-lite が既にインストール済みか確認
-function IsNdlOcrInstalled(): Boolean;
-var
-  LocalBin: String;
-begin
-  LocalBin := ExpandConstant('{userappdata}') + '\..\Local\Temp';  // ダミー（実際はHOMEを参照）
-  // %USERPROFILE%\.local\bin\ndlocr-lite.exe の存在チェック
-  Result := FileExists(GetEnv('USERPROFILE') + '\.local\bin\ndlocr-lite.exe');
-end;
-
-// インストール前のチェック
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-end;
-
-// タスクページ表示時に ndlocr-lite 既存インストールを検出してチェックを外す
-procedure CurPageChanged(CurPageID: Integer);
-var
-  i: Integer;
-begin
-  if CurPageID = wpSelectTasks then
-  begin
-    if IsNdlOcrInstalled() then
-    begin
-      for i := 0 to WizardForm.TasksList.Items.Count - 1 do
-      begin
-        if Pos('ndlocr-lite', WizardForm.TasksList.Items[i]) > 0 then
-        begin
-          WizardForm.TasksList.Checked[i] := False;
-          Break;
-        end;
-      end;
-    end;
-  end;
-end;
-
 // アンインストール時の確認
 function InitializeUninstall(): Boolean;
 var

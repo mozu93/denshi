@@ -1,238 +1,162 @@
 # -*- coding: utf-8 -*-
 """
-OCR処理モジュール - ndlocr-lite 常駐サーバー方式
+OCR処理モジュール - Windows OCR (WinRT) 方式
 
-アプリ起動時に ndlocr-lite のモデルを1回だけロードし、
-以降の OCR リクエストは推論のみ実行することで高速化。
+Windows 10/11 標準搭載の OCR エンジンを使用。
+追加インストール不要（winsdk パッケージのみ必要）・高速・現代印刷文字に強い。
 """
 
-import json
+import asyncio
+import io
 import logging
-import os
-import shutil
-import subprocess
-import sys
-import tempfile
 import threading
-from pathlib import Path
+from typing import Optional
+
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-def _find_ndl_python() -> str:
-    """ndlocr-lite の Python 実行ファイルパスを動的に解決する。"""
-    # 1) uv tool dir で tools ディレクトリを取得
-    uv_exe = shutil.which("uv") or os.path.expanduser(r"~\.local\bin\uv.exe")
-    if os.path.exists(uv_exe):
-        try:
-            result = subprocess.run(
-                [uv_exe, "tool", "dir"],
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                tools_dir = result.stdout.strip()
-                candidate = os.path.join(tools_dir, "ndlocr-lite", "Scripts", "python.exe")
-                if os.path.exists(candidate):
-                    return candidate
-        except Exception:
-            pass
 
-    # 2) フォールバック: Roaming\uv\tools の既定パス
-    fallback = os.path.expanduser(r"~\AppData\Roaming\uv\tools\ndlocr-lite\Scripts\python.exe")
-    return fallback
+class _WinOcrEngine:
+    """Windows OCR エンジンのシングルトンラッパー。スレッドセーフ。"""
 
-
-_NDL_PYTHON = _find_ndl_python()
-
-# 常駐サーバースクリプトのパスを解決
-# PyInstallerバンドル時は sys._MEIPASS 以下に配置される
-if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-    _SERVER_SCRIPT = str(Path(sys._MEIPASS) / "models" / "ndlocr_server.py")
-else:
-    _SERVER_SCRIPT = str(Path(__file__).parent / "ndlocr_server.py")
-
-
-class _OcrServer:
-    """
-    ndlocr-lite モデルを常駐させる シングルトンサーバー。
-    モデルは最初のリクエスト（または warm_up）時に1回だけロードされる。
-    """
     _lock = threading.Lock()
-    _instance = None
+    _instance: Optional["_WinOcrEngine"] = None
 
     @classmethod
-    def get(cls) -> "_OcrServer":
+    def get(cls) -> "_WinOcrEngine":
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls()
             return cls._instance
 
     def __init__(self):
-        self._proc: subprocess.Popen | None = None
-        self._proc_lock = threading.Lock()
+        self._engine = None
+        self._engine_lock = threading.Lock()
 
-    def _start(self):
-        """サーバープロセスを起動してモデルロードを待つ。"""
-        if not os.path.exists(_NDL_PYTHON):
-            raise RuntimeError(
-                "ndlocr-lite の Python 環境が見つかりません。\n"
-                "インストールされているか確認してください。"
-            )
-        if not os.path.exists(_SERVER_SCRIPT):
-            raise RuntimeError(f"サーバースクリプトが見つかりません: {_SERVER_SCRIPT}")
-
-        logger.info("ndlocr-lite サーバーを起動中...")
-        # Windows でコンソールウィンドウが表示されないよう CREATE_NO_WINDOW を指定
-        _cflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        # サブプロセスの標準入出力を強制的に UTF-8 にする
-        _env = os.environ.copy()
-        _env["PYTHONIOENCODING"] = "utf-8"
-        _env["PYTHONUTF8"] = "1"
-        proc = subprocess.Popen(
-            [_NDL_PYTHON, _SERVER_SCRIPT],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            bufsize=1,   # 行バッファ
-            creationflags=_cflags,
-            env=_env,
-        )
-
-        # "READY" を待つ（最大120秒）
-        import select as _select
-        import time
-        deadline = time.time() + 120
-        while time.time() < deadline:
-            line = proc.stdout.readline().strip()
-            if line == "READY":
-                logger.info("ndlocr-lite サーバー準備完了")
-                self._proc = proc
+    def ensure_engine(self):
+        """OCR エンジンを初期化する（初回のみ）。"""
+        with self._engine_lock:
+            if self._engine is not None:
                 return
-            if line.startswith("{"):
-                # エラー JSON が返ってきた場合
-                err = json.loads(line).get("error", line)
-                raise RuntimeError(f"ndlocr-lite サーバー起動エラー: {err}")
-            if proc.poll() is not None:
-                stderr = proc.stderr.read()
-                raise RuntimeError(f"ndlocr-lite サーバーが終了しました:\n{stderr[:500]}")
+            try:
+                from winsdk.windows.media.ocr import OcrEngine
+                from winsdk.windows.globalization import Language
 
-        proc.terminate()
-        raise RuntimeError("ndlocr-lite サーバーの起動がタイムアウトしました（120秒）。")
+                lang = Language("ja")
+                if OcrEngine.is_language_supported(lang):
+                    self._engine = OcrEngine.try_create_from_language(lang)
+                else:
+                    self._engine = OcrEngine.try_create_from_user_profile_languages()
 
-    def run_ocr(self, img_path: str) -> dict:
-        """画像パスを送信して OCR 結果の辞書を返す。"""
-        with self._proc_lock:
-            # プロセスが死んでいたら再起動
-            if self._proc is None or self._proc.poll() is not None:
-                self._proc = None
-                self._start()
+                if self._engine is None:
+                    raise RuntimeError("Windows OCR エンジンの作成に失敗しました")
+                logger.info("Windows OCR エンジン初期化完了")
+            except ImportError:
+                raise RuntimeError(
+                    "winsdk パッケージが見つかりません。\n"
+                    "pip install winsdk を実行してください。"
+                )
 
-            proc = self._proc
-            proc.stdin.write(img_path + "\n")
-            proc.stdin.flush()
+    def run_ocr(self, pil_image: Image.Image) -> list:
+        """PIL Image に OCR を実行して結果リストを返す。
 
-            line = proc.stdout.readline()
-            if not line:
-                raise RuntimeError("ndlocr-lite サーバーから応答がありませんでした。")
+        asyncio.run() でコルーチンを実行する。
+        QThread 内から呼ばれる想定。
+        """
+        self.ensure_engine()
+        return asyncio.run(self._recognize_async(pil_image))
 
-            result = json.loads(line)
-            if "error" in result:
-                raise RuntimeError(f"OCR エラー: {result['error']}")
-            return result
+    async def _recognize_async(self, pil_image: Image.Image) -> list:
+        """WinRT OCR を非同期で実行する。"""
+        from winsdk.windows.graphics.imaging import BitmapDecoder
+        from winsdk.windows.storage.streams import InMemoryRandomAccessStream, DataWriter
 
-    def shutdown(self):
-        with self._proc_lock:
-            if self._proc and self._proc.poll() is None:
-                try:
-                    self._proc.stdin.close()
-                    self._proc.wait(timeout=5)
-                except Exception:
-                    self._proc.terminate()
-                self._proc = None
+        # PIL → BMP バイト列（軽量・無圧縮で高速）
+        buf = io.BytesIO()
+        pil_image.convert("RGB").save(buf, format="BMP")
+        bmp_bytes = buf.getvalue()
+
+        # BMP バイト列 → WinRT InMemoryRandomAccessStream
+        stream = InMemoryRandomAccessStream()
+        writer = DataWriter(stream.get_output_stream_at(0))
+        writer.write_bytes(bytearray(bmp_bytes))
+        await writer.store_async()
+        stream.seek(0)
+
+        # BitmapDecoder → SoftwareBitmap
+        decoder = await BitmapDecoder.create_async(stream)
+        bitmap = await decoder.get_software_bitmap_async()
+
+        # OCR 実行
+        result = await self._engine.recognize_async(bitmap)
+
+        # LINE 単位でグループ化して返す。
+        # Windows OCR は日本語を1文字ずつ word 分割することがあるため、
+        # word 単位ではなく line 単位で結合することで正しい文字列順序を保つ。
+        lines = []
+        for line in result.lines:
+            line_text = "".join(w.text for w in line.words).strip()
+            if not line_text:
+                continue
+            # ライン全体のバウンディングボックスを計算
+            xs = [int(w.bounding_rect.x) for w in line.words]
+            ys = [int(w.bounding_rect.y) for w in line.words]
+            x2s = [int(w.bounding_rect.x + w.bounding_rect.width) for w in line.words]
+            y2s = [int(w.bounding_rect.y + w.bounding_rect.height) for w in line.words]
+            left   = min(xs)
+            top    = min(ys)
+            width  = max(x2s) - left
+            height = max(y2s) - top
+            lines.append({
+                "text":   line_text,
+                "left":   left,
+                "top":    top,
+                "width":  width,
+                "height": height,
+                "conf":   1.0,
+            })
+        return lines
 
 
 class OcrProcessor:
+    """OCR 処理の公開インターフェース。"""
+
     @staticmethod
     def warm_up(config_manager):
-        """アプリ起動時にバックグラウンドでモデルをロードしておく。"""
-        try:
-            from PIL import Image
-            server = _OcrServer.get()
-            with server._proc_lock:
-                if server._proc is None or server._proc.poll() is not None:
-                    server._proc = None
-                    server._start()
-            logger.info("ndlocr-lite ウォームアップ完了")
-        except Exception as e:
-            logger.warning(f"OCRウォームアップ中にエラーが発生しました: {e}")
+        """アプリ起動時にバックグラウンドでエンジンを初期化しておく。"""
+        def _init():
+            try:
+                _WinOcrEngine.get().ensure_engine()
+                logger.info("Windows OCR ウォームアップ完了")
+            except Exception as e:
+                logger.warning(f"OCR ウォームアップ中にエラーが発生しました: {e}")
+
+        t = threading.Thread(target=_init, daemon=True)
+        t.start()
 
     @staticmethod
     def shutdown():
-        """アプリ終了時にサーバーを停止する。"""
-        _OcrServer.get().shutdown()
+        """アプリ終了時の後処理（Windows OCR はサーバー不要）。"""
+        pass
 
-    def __init__(self, image, config_manager):
+    def __init__(self, image: Image.Image, config_manager):
         self.image = image
         self.config_manager = config_manager
 
-    def get_text_and_boxes(self, min_confidence=0):
+    def get_text_and_boxes(self, min_confidence: float = 0) -> list:
         """OCR を実行して認識結果をリストで返す。
 
         Returns:
             list of dict: {text, left, top, width, height, conf}
         """
-        if not os.path.exists(_NDL_PYTHON):
-            raise RuntimeError(
-                "ndlocr-lite が見つかりません。\n"
-                "インストーラーで OCRエンジンをインストールしてください。"
-            )
-
         try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                img_path = os.path.join(tmpdir, "input.png")
-                self.image.save(img_path)
-
-                server = _OcrServer.get()
-                data = server.run_ocr(img_path)
-
-            return _parse_ndlocr_json(data, min_confidence)
-
+            engine = _WinOcrEngine.get()
+            results = engine.run_ocr(self.image)
+            if min_confidence > 0:
+                results = [r for r in results if r.get("conf", 1.0) * 100 >= min_confidence]
+            return results
         except RuntimeError:
             raise
         except Exception as e:
             raise RuntimeError(f"OCR処理中にエラーが発生しました: {e}")
-
-
-def _parse_ndlocr_json(data: dict, min_confidence: float = 0) -> list:
-    """ndlocr-lite の JSON 出力を {text, left, top, width, height, conf} のリストに変換。"""
-    results = []
-    contents = data.get("contents", [])
-    for block in contents:
-        items = block if isinstance(block, list) else [block]
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            text = item.get("text", "").strip()
-            if not text:
-                continue
-            conf = float(item.get("confidence", 1.0)) * 100
-            if conf < min_confidence:
-                continue
-            bb = item.get("boundingBox", [])
-            if len(bb) >= 4:
-                left   = bb[0][0]
-                top    = bb[0][1]
-                width  = bb[2][0] - left
-                height = bb[1][1] - top
-            else:
-                left = top = width = height = 0
-            results.append({
-                "text":   text,
-                "left":   left,
-                "top":    top,
-                "width":  width,
-                "height": height,
-                "conf":   conf,
-            })
-    return results

@@ -19,9 +19,6 @@ from VERSION import __version__, __build_date__, APP_NAME_EN
 datas = [
     ('config.ini', '.'),
     ('styles', 'styles'),
-    # ndlocr_server.py は ndlocr-lite の Python 環境から別プロセスで実行されるため
-    # .py ソースのままデータファイルとして含める必要がある
-    ('models/ndlocr_server.py', 'models'),
 ]
 
 # PyMuPDFのデータファイルを含める
@@ -74,6 +71,11 @@ hiddenimports = [
     'pdfminer.converter',
     'cryptography',
     'charset_normalizer',
+    'winsdk',
+    'winsdk.windows.media.ocr',
+    'winsdk.windows.globalization',
+    'winsdk.windows.graphics.imaging',
+    'winsdk.windows.storage.streams',
 ]
 
 # PyQt6の全サブモジュールを収集
@@ -95,7 +97,7 @@ a = Analysis(
         'tkinter',
         'unittest',
         'test',
-        # ndlocr-lite の依存ライブラリ（実行時は別プロセスで動作するため不要）
+        # 重い機械学習ライブラリ（使用しない）
         'torch',
         'torchvision',
         'torchaudio',
@@ -109,7 +111,6 @@ a = Analysis(
         'cv2',
         'PIL.features',  # PIL は使うが features は不要
         'av',
-        'yaml',          # PyYAML は ndlocr-lite 側で使用
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

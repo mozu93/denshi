@@ -18,7 +18,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QBuffer, QIODevice, QPoint, QRe
 from PIL import Image, ImageQt
 
 from models.pdf_processor import PdfProcessor
-from models.ocr_processor import OcrProcessor, _OcrServer
+from models.ocr_processor import OcrProcessor
 from models.pdf_text_extractor import PdfTextExtractor
 from models.learning_manager import LearningManager
 from utils.date_converter import DateConverter
@@ -32,36 +32,38 @@ from utils.constants import CATEGORY_EXPENDITURE, CATEGORY_INCOME, CATEGORY_OTHE
 logger = logging.getLogger(__name__)
 
 
-def _dedup_ocr_text(results: list) -> str:
+def _remove_repetition_pattern(text: str) -> str:
     """
-    ndlocr-liteのOCR結果リストからテキストを結合する。
-    ・複数の検出結果に同じテキストが含まれる場合は重複除去
-    ・単一の認識結果が繰り返しパターン（部分繰り返し含む）になっている場合も除去
-    　例: '三重交通三重交通' → '三重交通'
-    　例: '124500124500124500' → '124500'
-    　例: '224000224000224' → '224000' (完全2回 + 部分1回)
-    """
-    # 重複結果を除去しながら結合
-    seen: set = set()
-    unique_parts: list = []
-    for r in (results or []):
-        t = r.get('text', '').strip()
-        if t and t not in seen:
-            seen.add(t)
-            unique_parts.append(t)
-    text = "".join(unique_parts)
+    文字列が繰り返しパターン（部分繰り返し含む）になっている場合に
+    単位文字列を返す。そうでなければ元の文字列を返す。
 
+    検出する2種類のパターン:
+    Case1: 完全2回以上の繰り返し (末尾部分一致を許容)
+        例: '三重交通三重交通' (完全2回)         -> '三重交通'
+        例: '124500124500124500' (完全3回)       -> '124500'
+        例: '224000224000224' (完全2回+部分3)    -> '224000'
+    Case2: 完全1回 + 末尾の部分繰り返し（モデル出力が打ち切られたケース）
+        例: '22400022' (1回+部分2)               -> '224000'
+        例: '224000224' (1回+部分3)              -> '224000'
+
+    誤検出回避の制約:
+    - 最小文字数 8: '100100'(=100,100円) 等の正規6桁金額を保護
+    - 単位長 >= 4: 短すぎる単位での誤検出を防止
+    - 単位内ユニーク文字数 >= 2: '5555' '55555555' 等の同一文字反復を保護
+    - Case2 の部分長 <= 単位長/2 かつ >= 2:
+        '20240202'(日付) 等の正規8桁値を保護しつつ短い部分繰り返しのみ検出
+    """
     n = len(text)
-    if n < 4:
+    if n < 8:
         return text
 
-    # 最小単位を 2 にして '1212'→'12' は許容するが '11'→'1' のような過剰削除は防止
-    for unit_len in range(2, n // 2 + 1):
+    # ---- Case 1: 完全2回以上 ----
+    for unit_len in range(4, n // 2 + 1):
         unit = text[:unit_len]
-        # 少なくとも完全2回の繰り返しが必要
+        if len(set(unit)) < 2:
+            continue
         if text[unit_len:2 * unit_len] != unit:
             continue
-        # 残りの部分が「完全繰り返し」または「末尾のみ unit のプレフィックス」になっているか
         valid = True
         i = 2 * unit_len
         while i < n:
@@ -80,26 +82,58 @@ def _dedup_ocr_text(results: list) -> str:
                     break
         if valid:
             return unit
+
+    # ---- Case 2: 完全1回 + 末尾部分繰り返し ----
+    for unit_len in range(4, n):
+        partial_len = n - unit_len
+        if partial_len < 2:
+            break  # これ以上 unit_len を増やすと partial が短すぎる
+        if partial_len * 2 > unit_len:  # partial > unit_len/2 → 過剰検出回避のためスキップ
+            continue
+        unit = text[:unit_len]
+        if len(set(unit)) < 2:
+            continue
+        partial = text[unit_len:]
+        if unit.startswith(partial):
+            return unit
     return text
 
 
-class _OcrWorker(QThread):
-    """OCR をバックグラウンドスレッドで実行するワーカー。"""
-    finished = pyqtSignal(list)   # OCR結果リスト
-    error    = pyqtSignal(str)    # エラーメッセージ
+def _dedup_ocr_text(results: list) -> str:
+    """
+    ndlocr-liteのOCR結果リストからテキストを結合し、繰り返しパターンを除去する。
+    """
+    seen: set = set()
+    unique_parts: list = []
+    for r in (results or []):
+        t = r.get('text', '').strip()
+        if t and t not in seen:
+            seen.add(t)
+            unique_parts.append(t)
+    return _remove_repetition_pattern("".join(unique_parts))
 
-    def __init__(self, image, config_manager):
+
+class _PageOcrWorker(QThread):
+    """1ページ全体のOCRをバックグラウンドで実行するワーカー。
+    結果はインスタンス属性に格納し、完了通知のみシグナルで送信する。"""
+    done = pyqtSignal(str)  # file_path
+
+    def __init__(self, file_path: str, pil_image, config_manager):
         super().__init__()
-        self._image = image
+        self._file_path = file_path
+        self._image = pil_image
         self._config_manager = config_manager
+        self.results: list = []
+        self.error_message: str = ""
 
     def run(self):
         try:
-            results = OcrProcessor(self._image, self._config_manager).get_text_and_boxes()
-            self.finished.emit(results or [])
+            self.results = OcrProcessor(self._image, self._config_manager).get_text_and_boxes() or []
         except Exception as e:
-            logger.error(f"OCRワーカーエラー: {e}", exc_info=True)
-            self.error.emit(str(e))
+            self.error_message = str(e)
+            logger.error(f"ページOCRワーカーエラー: {e}", exc_info=True)
+        self.done.emit(self._file_path)
+
 
 
 class SelectablePdfPreviewLabel(QLabel):
@@ -180,6 +214,10 @@ class FileRegistrationTab(QWidget):
         self.learning_manager = LearningManager(_learning_path)
         self.last_ocr_regions: dict = {}  # field_name -> (x_pct, y_pct, w_pct, h_pct)
         self.last_reg_number: Optional[str] = None  # 現在表示中PDFの登録番号
+
+        # ページ単位のOCRキャッシュ（小領域OCRではなく全体OCRで繰り返し問題を回避）
+        self._page_ocr_cache: dict = {}      # file_path -> [ {text, left, top, width, height, conf} ]
+        self._page_ocr_workers: dict = {}    # file_path -> _PageOcrWorker (進行中のもの)
 
         self._create_widgets()
         self._setup_layout()
@@ -499,6 +537,9 @@ class FileRegistrationTab(QWidget):
     def on_file_selection_changed(self, current, previous):
         """Handle file selection changes - update both PDF preview and document ID."""
         self.display_pdf_preview(current, previous)
+        if current is not None:
+            # バックグラウンドで全ページOCRを開始（手動領域選択時に瞬時に応答するため）
+            self._ensure_page_ocr(current.text())
         self._try_auto_extract(current)
         self.update_doc_id()
 
@@ -547,6 +588,8 @@ class FileRegistrationTab(QWidget):
         self.display_pdf_preview(self.file_list_widget.currentItem(), None)
 
     def on_region_selected(self, selection_rect):
+        """ユーザーが選択した領域に対応するテキストを、ページ全体OCRのキャッシュ
+        から取得してアクティブフィールドに入力する。"""
         if self.active_field is None:
             return
 
@@ -554,6 +597,8 @@ class FileRegistrationTab(QWidget):
         if current_item is None:
             return
         file_path = current_item.text()
+
+        # 高解像度ページサイズを取得（座標計算用、画像本体は不要）
         pdf_processor = PdfProcessor(file_path)
         if not pdf_processor.open():
             return
@@ -561,103 +606,77 @@ class FileRegistrationTab(QWidget):
         pdf_processor.close()
         if not fitz_pixmap_high_res:
             return
-        qimage_high_res = QImage(fitz_pixmap_high_res.samples, fitz_pixmap_high_res.width, fitz_pixmap_high_res.height, fitz_pixmap_high_res.stride, QImage.Format.Format_RGB888)
-        pil_image_high_res = ImageQt.fromqimage(qimage_high_res)
+        page_w = fitz_pixmap_high_res.width
+        page_h = fitz_pixmap_high_res.height
 
+        # 選択矩形を高解像度ピクセル座標に変換
         pixmap_on_label = self.pdf_preview_label.pixmap()
         if pixmap_on_label.isNull():
             return
-
         pixmap_rect = pixmap_on_label.rect()
         label_rect = self.pdf_preview_label.rect()
         offset_x = (label_rect.width() - pixmap_rect.width()) / 2
         offset_y = (label_rect.height() - pixmap_rect.height()) / 2
         translated_selection_rect = selection_rect.translated(-int(offset_x), -int(offset_y))
-
         pixmap_width = pixmap_on_label.width()
         pixmap_height = pixmap_on_label.height()
-
         if pixmap_width == 0 or pixmap_height == 0:
             return
-
-        x_scale = fitz_pixmap_high_res.width / pixmap_width
-        y_scale = fitz_pixmap_high_res.height / pixmap_height
-
+        x_scale = page_w / pixmap_width
+        y_scale = page_h / pixmap_height
         x = int(translated_selection_rect.x() * x_scale)
         y = int(translated_selection_rect.y() * y_scale)
         w = int(translated_selection_rect.width() * x_scale)
         h = int(translated_selection_rect.height() * y_scale)
-
         if w <= 0 or h <= 0:
             return
-
-        img_width, img_height = pil_image_high_res.size
         x = max(0, x)
         y = max(0, y)
-        w = min(w, img_width - x)
-        h = min(h, img_height - y)
-
+        w = min(w, page_w - x)
+        h = min(h, page_h - y)
         if w <= 0 or h <= 0:
             return
 
-        cropped_image = pil_image_high_res.crop((x, y, x + w, y + h))
+        # ページ全体OCRキャッシュを確保（未起動なら開始、進行中なら同期待ち）
+        if file_path not in self._page_ocr_cache:
+            self._ensure_page_ocr(file_path)
+            if not self._wait_for_page_ocr_sync(file_path):
+                QMessageBox.warning(
+                    self, "OCRエラー",
+                    "OCRの実行に失敗しました。\nOCRエンジンが正しくインストールされているか確認してください。"
+                )
+                return
 
-        # ウェイトカーソル＋ステータス表示
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            main_win = self.window()
-            if hasattr(main_win, 'status_bar'):
-                main_win.status_bar.showMessage("OCR読み取り中...（初回のみ約12秒かかります）")
-        except Exception:
-            pass
+        # キャッシュから選択領域のテキストを抽出
+        text = self._get_text_from_region(file_path, x, y, w, h)
 
-        # OCR 完了後に呼ばれるコールバック（クロージャでコンテキストを保持）
-        active_field = self.active_field
-        page_w = fitz_pixmap_high_res.width
-        page_h = fitz_pixmap_high_res.height
-
-        def _on_ocr_finished(results):
-            QApplication.restoreOverrideCursor()
+        if not text:
             try:
                 mw = self.window()
                 if hasattr(mw, 'status_bar'):
-                    mw.status_bar.showMessage("OCR完了", 3000)
+                    mw.status_bar.showMessage("選択領域に文字が見つかりませんでした", 3000)
             except Exception:
                 pass
-            text = _dedup_ocr_text(results)
-            if active_field is self.issue_date_edit:
-                text = self.date_converter.to_seireki(text)
-            elif active_field is self.amount_edit:
-                text = self.validator._normalize_amount_string(text)
-            active_field.setText(text)
-            self.update_filename_preview()
-            # 学習: OCR領域をページ比率で記録
-            if text:
-                field_name = self._field_to_name(active_field)
-                if field_name:
-                    region_pct = (x / page_w, y / page_h, w / page_w, h / page_h)
-                    self.last_ocr_regions[field_name] = region_pct
-                    issuer = self.client_name_edit.text().strip()
-                    if issuer:
-                        self.learning_manager.learn_ocr_region(issuer, field_name, region_pct)
+            return
 
-        def _on_ocr_error(msg):
-            QApplication.restoreOverrideCursor()
-            try:
-                mw = self.window()
-                if hasattr(mw, 'status_bar'):
-                    mw.status_bar.showMessage("OCRエラー", 3000)
-            except Exception:
-                pass
-            QMessageBox.warning(self, "OCRエラー", f"OCRの読み取りに失敗しました。\n\n{msg}")
+        # フィールド別の正規化
+        if self.active_field is self.issue_date_edit:
+            text = self.date_converter.to_seireki(text)
+        elif self.active_field is self.amount_edit:
+            text = self.validator._normalize_amount_string(text)
 
-        # ワーカースレッドで OCR 実行（UI フリーズ防止）
-        worker = _OcrWorker(cropped_image, self.config_manager)
-        worker.finished.connect(_on_ocr_finished)
-        worker.error.connect(_on_ocr_error)
-        # GC されないようインスタンス変数に保持
-        self._ocr_worker = worker
-        worker.start()
+        self.active_field.setText(text)
+        self.update_filename_preview()
+
+        # 学習: OCR領域をページ比率で記録
+        if text:
+            field_name = self._field_to_name(self.active_field)
+            if field_name:
+                region_pct = (x / page_w, y / page_h, w / page_w, h / page_h)
+                self.last_ocr_regions[field_name] = region_pct
+                issuer = self.client_name_edit.text().strip()
+                if issuer:
+                    self.learning_manager.learn_ocr_region(issuer, field_name, region_pct)
 
     def _try_auto_extract(self, item):
         """テキストPDFから帳票情報を自動抽出して空フィールドに入力する"""
@@ -706,19 +725,20 @@ class FileRegistrationTab(QWidget):
         if (not self.issue_date_edit.text()
                 and result.issue_date
                 and result.field_confidences.get('issue_date', 0) >= threshold):
-            self.issue_date_edit.setText(result.issue_date)
+            self.issue_date_edit.setText(_remove_repetition_pattern(result.issue_date))
             filled.append("発行日")
 
         if (not self.amount_edit.text()
                 and result.amount
                 and result.field_confidences.get('amount', 0) >= threshold):
-            self.amount_edit.setText(str(result.amount))
+            # PDFテキストレイヤー重複等による '224000224000' のような繰り返し値を補正
+            self.amount_edit.setText(_remove_repetition_pattern(str(result.amount)))
             filled.append("金額")
 
         if (not self.client_name_edit.text()
                 and result.client_name
                 and result.field_confidences.get('client_name', 0) >= threshold):
-            self.client_name_edit.setText(result.client_name)
+            self.client_name_edit.setText(_remove_repetition_pattern(result.client_name))
             filled.append("取引先")
 
         # 書類種別：コンボボックスのアイテムにキーワードが含まれるか検索
@@ -744,59 +764,47 @@ class FileRegistrationTab(QWidget):
             self.extraction_status_label.setStyleSheet("color: #888;")
 
     def _extract_client_from_ocr(self, file_path: str):
-        """ndlocr-lite で 1 ページ目全体をOCRして企業名を抽出するフォールバック。"""
-        # メインスレッドフリーズ防止: サーバーがまだ起動中の場合はスキップ
-        if _OcrServer.get()._proc is None:
-            logger.debug("OCRサーバー起動中のため取引先名OCRフォールバックをスキップ")
+        """ページOCRキャッシュから企業名を抽出するフォールバック。
+        キャッシュ未準備の場合は None を返す（バックグラウンドOCR完了時に再試行される）。"""
+        if file_path not in self._page_ocr_cache:
+            self._ensure_page_ocr(file_path)
             return None
-        try:
-            import fitz
-            _CORP_SUFFIX = (
-                r'(?:株式会社|有限会社|合同会社|合資会社|合名会社'
-                r'|一般社団法人|公益社団法人|社会福祉法人|医療法人'
-                r'|学校法人|協同組合|農業協同組合|信用組合|信用金庫)'
-            )
 
-            doc = fitz.open(file_path)
-            page = doc.load_page(0)
-            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
-            doc.close()
+        _CORP_SUFFIX = (
+            r'(?:株式会社|有限会社|合同会社|合資会社|合名会社'
+            r'|一般社団法人|公益社団法人|社会福祉法人|医療法人'
+            r'|学校法人|協同組合|農業協同組合|信用組合|信用金庫)'
+        )
 
-            pil_img = Image.open(io.BytesIO(pix.tobytes("png")))
-            ocr_results = OcrProcessor(pil_img, self.config_manager).get_text_and_boxes()
+        ocr_results = self._page_ocr_cache.get(file_path, [])
+        recipient_names: set = set()
+        issuer_names: list = []
 
-            recipient_names: set = set()
-            issuer_names: list = []
-
-            for r in ocr_results:
-                text = r['text'].strip()
-                if not text:
-                    continue
-                # 御中・様の直前は宛先なので発行元候補から除外
-                if re.search(r'(?:御中|様)(?:\s|$)', text):
-                    m = re.search(rf'(.{{2,30}}?){_CORP_SUFFIX}', text)
-                    if m:
-                        recipient_names.add(m.group(0).strip())
-                    continue
-                # 接尾パターン: ○○株式会社
-                m = re.search(rf'(.{{0,20}}{_CORP_SUFFIX})', text)
+        for r in ocr_results:
+            text = (r.get('text') or '').strip()
+            if not text:
+                continue
+            # 御中・様の直前は宛先なので発行元候補から除外
+            if re.search(r'(?:御中|様)(?:\s|$)', text):
+                m = re.search(rf'(.{{2,30}}?){_CORP_SUFFIX}', text)
                 if m:
-                    name = m.group(1).strip()
-                    if name not in recipient_names and 2 <= len(name) <= 30:
-                        issuer_names.append(name)
-                        continue
-                # 接頭パターン: 株式会社○○
-                m = re.search(rf'({_CORP_SUFFIX}.{{1,20}})', text)
-                if m:
-                    name = m.group(1).strip()
-                    if name not in recipient_names and 2 <= len(name) <= 30:
-                        issuer_names.append(name)
+                    recipient_names.add(m.group(0).strip())
+                continue
+            # 接尾パターン: ○○株式会社
+            m = re.search(rf'(.{{0,20}}{_CORP_SUFFIX})', text)
+            if m:
+                name = m.group(1).strip()
+                if name not in recipient_names and 2 <= len(name) <= 30:
+                    issuer_names.append(name)
+                    continue
+            # 接頭パターン: 株式会社○○
+            m = re.search(rf'({_CORP_SUFFIX}.{{1,20}})', text)
+            if m:
+                name = m.group(1).strip()
+                if name not in recipient_names and 2 <= len(name) <= 30:
+                    issuer_names.append(name)
 
-            return issuer_names[0] if issuer_names else None
-
-        except Exception as e:
-            logger.debug(f"取引先名OCRフォールバックエラー: {e}")
-            return None
+        return issuer_names[0] if issuer_names else None
 
     def _trigger_auto_extract(self):
         """「自動入力」ボタン押下時：フィールドをクリアして再抽出する"""
@@ -849,23 +857,23 @@ class FileRegistrationTab(QWidget):
 
     def _apply_learned_ocr(self, file_path: str, regions: dict) -> list[str]:
         """
-        学習済みOCR領域を使って空フィールドをOCRで自動入力する。
-        適用したフィールド名のリストを返す。
+        学習済みOCR領域を使って空フィールドを自動入力する。
+        ページOCRキャッシュから領域フィルタで該当テキストを取得（個別小領域OCRは行わない）。
         """
         field_map = {
             'issue_date': self.issue_date_edit,
             'amount': self.amount_edit,
             'client_name': self.client_name_edit,
         }
-        # 対象フィールドが全て入力済みなら早期リターン
         target_fields = {k: v for k, v in field_map.items() if k in regions and not v.text()}
         if not target_fields:
             return []
-        # メインスレッドフリーズ防止: サーバーがまだ起動中の場合はスキップ
-        if _OcrServer.get()._proc is None:
-            logger.debug("OCRサーバー起動中のため学習OCR適用をスキップ")
+        # キャッシュ未準備ならスキップ（バックグラウンドOCR完了時に再試行される）
+        if file_path not in self._page_ocr_cache:
+            self._ensure_page_ocr(file_path)
             return []
 
+        # ページサイズ取得（学習領域(比率) → ピクセル座標に変換するため）
         pdf_processor = PdfProcessor(file_path)
         if not pdf_processor.open():
             return []
@@ -873,12 +881,6 @@ class FileRegistrationTab(QWidget):
         pdf_processor.close()
         if not fitz_pixmap:
             return []
-
-        qimage = QImage(
-            fitz_pixmap.samples, fitz_pixmap.width, fitz_pixmap.height,
-            fitz_pixmap.stride, QImage.Format.Format_RGB888
-        )
-        pil_image = ImageQt.fromqimage(qimage)
         pw, ph = fitz_pixmap.width, fitz_pixmap.height
 
         filled = []
@@ -893,23 +895,146 @@ class FileRegistrationTab(QWidget):
             if w <= 0 or h <= 0:
                 continue
 
-            cropped = pil_image.crop((x, y, x + w, y + h))
-            try:
-                ocr_results = OcrProcessor(cropped, self.config_manager).get_text_and_boxes()
-                text = _dedup_ocr_text(ocr_results)
-                if not text:
-                    continue
-                if field_widget is self.issue_date_edit:
-                    text = self.date_converter.to_seireki(text)
-                elif field_widget is self.amount_edit:
-                    text = self.validator._normalize_amount_string(text)
-                if text:
-                    field_widget.setText(text)
-                    filled.append(f"{field_name}(OCR学習)")
-            except Exception as e:
-                logger.warning(f"学習済みOCR領域の適用エラー ({field_name}): {e}")
+            text = self._get_text_from_region(file_path, x, y, w, h)
+            if not text:
+                continue
+            if field_widget is self.issue_date_edit:
+                text = self.date_converter.to_seireki(text)
+            elif field_widget is self.amount_edit:
+                text = self.validator._normalize_amount_string(text)
+            if text:
+                field_widget.setText(text)
+                filled.append(f"{field_name}(OCR学習)")
 
         return filled
+
+    # ------------------------------------------------------------------
+    # ページ単位OCRキャッシュ
+    # ------------------------------------------------------------------
+
+    def _ensure_page_ocr(self, file_path: str):
+        """ファイルのページOCRを開始（既にキャッシュ済み or 進行中なら何もしない）。"""
+        if not file_path:
+            return
+        if file_path in self._page_ocr_cache:
+            return
+        if file_path in self._page_ocr_workers:
+            return
+        try:
+            pdf_processor = PdfProcessor(file_path)
+            if not pdf_processor.open():
+                return
+            fitz_pixmap = pdf_processor.get_page_as_pixmap(0, scale_factor=self.ocr_scale_factor)
+            pdf_processor.close()
+            if not fitz_pixmap:
+                return
+            qimage = QImage(
+                fitz_pixmap.samples, fitz_pixmap.width, fitz_pixmap.height,
+                fitz_pixmap.stride, QImage.Format.Format_RGB888
+            )
+            pil_image = ImageQt.fromqimage(qimage)
+        except Exception as e:
+            logger.warning(f"ページ画像準備エラー: {e}")
+            return
+
+        worker = _PageOcrWorker(file_path, pil_image, self.config_manager)
+        worker.done.connect(self._on_page_ocr_done)
+        self._page_ocr_workers[file_path] = worker
+        worker.start()
+
+    def _finalize_page_ocr(self, file_path: str) -> bool:
+        """ワーカーの結果をキャッシュに反映する。成功時 True を返す。"""
+        worker = self._page_ocr_workers.get(file_path)
+        if worker is None:
+            return file_path in self._page_ocr_cache
+        if not worker.isFinished():
+            return False
+        self._page_ocr_workers.pop(file_path, None)
+        if worker.error_message:
+            logger.warning(f"ページOCRエラー: {worker.error_message}")
+            return False
+        self._page_ocr_cache[file_path] = worker.results
+        return True
+
+    def _on_page_ocr_done(self, file_path: str):
+        """ワーカー完了通知（メインスレッドで処理される）。"""
+        if not self._finalize_page_ocr(file_path):
+            return
+        # 現在表示中ファイルなら学習適用と取引先名フォールバックを再試行
+        current_item = self.file_list_widget.currentItem()
+        if current_item and current_item.text() == file_path:
+            # 取引先名がまだ空ならOCRキャッシュから抽出
+            if not self.client_name_edit.text():
+                ocr_client = self._extract_client_from_ocr(file_path)
+                if ocr_client:
+                    self.client_name_edit.setText(_remove_repetition_pattern(ocr_client))
+            issuer = self.client_name_edit.text().strip()
+            if issuer:
+                self._apply_learning(file_path, issuer)
+
+    def _wait_for_page_ocr_sync(self, file_path: str, timeout_ms: int = 120000) -> bool:
+        """ページOCR完了を同期的に待ち、キャッシュに反映する。成功時 True。"""
+        if file_path in self._page_ocr_cache:
+            return True
+        worker = self._page_ocr_workers.get(file_path)
+        if worker is None:
+            return False
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            main_win = self.window()
+            if hasattr(main_win, 'status_bar'):
+                main_win.status_bar.showMessage("OCR処理中...（数秒お待ちください）")
+            worker.wait(timeout_ms)
+            ok = self._finalize_page_ocr(file_path)
+        finally:
+            QApplication.restoreOverrideCursor()
+        try:
+            mw = self.window()
+            if hasattr(mw, 'status_bar'):
+                mw.status_bar.showMessage("OCR完了" if ok else "OCRエラー", 3000)
+        except Exception:
+            pass
+        return ok
+
+    def _get_text_from_region(self, file_path: str, x: int, y: int, w: int, h: int) -> str:
+        """キャッシュされたOCR結果から、指定領域(高解像度ピクセル座標)に含まれる
+        テキストを読み順で結合して返す。"""
+        results = self._page_ocr_cache.get(file_path) or []
+        if not results:
+            return ""
+
+        sel_right = x + w
+        sel_bottom = y + h
+        matched_strict: list = []   # box_ratio >= 0.5
+        matched_loose: list = []    # box_ratio >= 0.2 (厳格条件でヒットなしの場合フォールバック)
+        for r in results:
+            bx = r.get('left', 0)
+            by = r.get('top', 0)
+            bw = r.get('width', 0)
+            bh = r.get('height', 0)
+            if bw <= 0 or bh <= 0:
+                continue
+            ov_x = max(0, min(bx + bw, sel_right) - max(bx, x))
+            ov_y = max(0, min(by + bh, sel_bottom) - max(by, y))
+            overlap = ov_x * ov_y
+            if overlap <= 0:
+                continue
+            box_area = bw * bh
+            box_ratio = overlap / box_area if box_area > 0 else 0
+            if box_ratio >= 0.5:
+                matched_strict.append(r)
+            elif box_ratio >= 0.2:
+                matched_loose.append(r)
+
+        # 厳格条件でヒットした場合はそちらを優先。
+        # ヒットゼロの場合（ユーザーが長いOCRラインの一部だけを選択した場合など）
+        # のみ緩和条件の結果を採用する。
+        selected = matched_strict if matched_strict else matched_loose
+
+        # 読み順（上→下、左→右）
+        selected.sort(key=lambda r: (r.get('top', 0), r.get('left', 0)))
+        return _dedup_ocr_text([{'text': r.get('text', '')} for r in selected])
 
     def _field_to_name(self, field) -> str | None:
         """アクティブフィールドを学習キー名に変換する"""

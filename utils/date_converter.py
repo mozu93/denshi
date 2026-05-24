@@ -13,7 +13,7 @@ class DateConverter:
         }
 
         for era_kanji, start_year in era_map.items():
-            match = re.match(fr"^{era_kanji}(\d+)[.\-年](\d+)[.\-月](\d+)日?", wareki_text, re.IGNORECASE)
+            match = re.search(fr"{era_kanji}(\d+)[.\-年](\d+)[.\-月](\d+)日?", wareki_text, re.IGNORECASE)
             if match:
                 try:
                     year = int(match.group(1))
