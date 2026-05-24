@@ -51,7 +51,17 @@ def get_config_path(base_path):
         except Exception as e:
             logger.error(f"共有設定ファイルの読み込みに失敗しました: {e}")
 
-    # Fallback to local config file
+    # インストール済みexeの場合は %APPDATA% に保存（Program Files は書き込み禁止）
+    if getattr(sys, 'frozen', False):
+        appdata = os.environ.get('APPDATA', '')
+        if appdata:
+            user_config_dir = os.path.join(appdata, 'DenshiChobohozoSystem')
+            os.makedirs(user_config_dir, exist_ok=True)
+            user_config_path = os.path.join(user_config_dir, 'config.ini')
+            logger.info(f"ユーザー設定ファイルを使用します: {user_config_path}")
+            return user_config_path
+
+    # 開発時はローカルのconfig.iniを使用
     local_config_path = os.path.join(base_path, 'config.ini')
     logger.info(f"ローカル設定ファイルを読み込みます: {local_config_path}")
     return local_config_path
