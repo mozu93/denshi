@@ -86,11 +86,27 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        # 標準ライブラリ（不要）
         'matplotlib',
         'scipy',
         'tkinter',
         'unittest',
         'test',
+        # ndlocr-lite の依存ライブラリ（実行時は別プロセスで動作するため不要）
+        'torch',
+        'torchvision',
+        'torchaudio',
+        'sklearn',
+        'scikit_learn',
+        'numba',
+        'llvmlite',
+        'onnxruntime',
+        'onnx',
+        'tensorflow',
+        'cv2',
+        'PIL.features',  # PIL は使うが features は不要
+        'av',
+        'yaml',          # PyYAML は ndlocr-lite 側で使用
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
