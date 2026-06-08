@@ -232,10 +232,10 @@ class FileSearchTab(QWidget):
         layout = QVBoxLayout()
 
         self.results_table = QTableWidget()
-        self.results_table.setColumnCount(8)
+        self.results_table.setColumnCount(9)
         self.results_table.setHorizontalHeaderLabels([
             "ID", "通し番号", "発行日", "金額(税込)", "取引先名",
-            "書類種別", "メモ", ""
+            "取引区分", "書類種別", "メモ", ""
         ])
         self.results_table.setColumnHidden(0, True) # Hide ID column
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers) # Make table read-only
@@ -251,13 +251,13 @@ class FileSearchTab(QWidget):
 
         header = self.results_table.horizontalHeader()
 
-        # データ列（1〜6）はインタラクティブ（ユーザーが手動リサイズ可能）
+        # データ列（1〜7）はインタラクティブ（ユーザーが手動リサイズ可能）
         # データ読み込み後に resizeColumnsToContents() でコンテンツに合わせて自動調整する
-        for col in range(1, 7):
+        for col in range(1, 8):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
 
         # 編集ボタン列は常にボタン幅に合わせる
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
 
         self.results_table.setWordWrap(True)
 
@@ -368,18 +368,19 @@ class FileSearchTab(QWidget):
             self.results_table.setItem(row_position, 2, QTableWidgetItem(self._fmt_num(row.get('issue_date'))))
             self.results_table.setItem(row_position, 3, QTableWidgetItem(self._fmt_num(row.get('amount'))))
             self.results_table.setItem(row_position, 4, QTableWidgetItem(self._fmt_str(row.get('client_name'))))
-            self.results_table.setItem(row_position, 5, QTableWidgetItem(self._fmt_str(row.get('doc_type'))))
-            self.results_table.setItem(row_position, 6, QTableWidgetItem(self._fmt_str(row.get('memo'))))
+            self.results_table.setItem(row_position, 5, QTableWidgetItem(self._fmt_str(row.get('category'))))
+            self.results_table.setItem(row_position, 6, QTableWidgetItem(self._fmt_str(row.get('doc_type'))))
+            self.results_table.setItem(row_position, 7, QTableWidgetItem(self._fmt_str(row.get('memo'))))
 
             # Add buttons
             record_id = row.get('id')
             edit_btn = QPushButton(QIcon.fromTheme("document-edit"), "編集")
             edit_btn.clicked.connect(partial(self._edit_row, record_id))
             apply_button_style(edit_btn)
-            self.results_table.setCellWidget(row_position, 7, edit_btn)
+            self.results_table.setCellWidget(row_position, 8, edit_btn)
 
-        # データ内容に応じて列幅を自動調整（列1〜6）
-        for col in range(1, 7):
+        # データ内容に応じて列幅を自動調整（列1〜7）
+        for col in range(1, 8):
             self.results_table.resizeColumnToContents(col)
 
     def _open_pdf(self, row, column):
