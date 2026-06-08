@@ -3,9 +3,19 @@ from PyQt6.QtWidgets import (
     QPushButton, QDialogButtonBox, QMessageBox, QGroupBox, QComboBox
 )
 import logging
+import math
 from utils.constants import CATEGORIES, CATEGORY_EXPENDITURE, CATEGORY_INCOME, CATEGORY_OTHER_ORG
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_str(val, default=''):
+    """NaN (float) や None を空文字列に変換する。"""
+    if val is None:
+        return default
+    if isinstance(val, float) and math.isnan(val):
+        return default
+    return str(val)
 
 class EditDialog(QDialog):
     def __init__(self, data, year_nendo, config_manager=None, metadata_manager=None, parent=None):
@@ -28,10 +38,10 @@ class EditDialog(QDialog):
         # --- メタデータ編集フォーム ---
         form_layout = QFormLayout()
         try:
-            self.client_name_edit = QLineEdit(str(data.get('client_name', '')))
-            self.issue_date_edit = QLineEdit(str(data.get('issue_date', '')))
-            self.amount_edit = QLineEdit(str(data.get('amount', '')))
-            self.memo_edit = QTextEdit(str(data.get('memo', '')))
+            self.client_name_edit = QLineEdit(_safe_str(data.get('client_name')))
+            self.issue_date_edit = QLineEdit(_safe_str(data.get('issue_date')))
+            self.amount_edit = QLineEdit(_safe_str(data.get('amount')))
+            self.memo_edit = QTextEdit(_safe_str(data.get('memo')))
         except Exception as e:
             logger.error(f"EditDialog: Error initializing fields: {e}")
             raise ValueError(f"フィールドの初期化に失敗しました: {e}")

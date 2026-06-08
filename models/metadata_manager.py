@@ -1,6 +1,7 @@
 import os
 import uuid
 import re
+import math
 import logging
 import shutil
 from datetime import datetime
@@ -216,17 +217,38 @@ class MetadataManager:
         is_doc_type_changed = dest_doc_type != original_record.get('doc_type')
         is_location_changed = is_year_changed or is_category_changed or is_doc_type_changed
 
+        def _safe_str_cmp(val):
+            """NaN/None を空文字列として正規化し文字列比較に使用する。"""
+            if val is None or (isinstance(val, float) and math.isnan(val)):
+                return ''
+            return str(val)
+
+        def _normalize_amount_for_compare(val):
+            """金額を int 経由で正規化して比較（"10800", 10800, 10800.0 を同一視）。"""
+            try:
+                f = float(str(val))
+                if math.isnan(f):
+                    return ''
+                return str(int(f))
+            except (ValueError, TypeError):
+                return str(val) if val is not None else ''
+
         is_rename_needed = (
-            str(new_data.get('issue_date')) != str(original_record.get('issue_date')) or
-            str(new_data.get('amount')) != str(original_record.get('amount')) or
-            new_data.get('client_name') != original_record.get('client_name')
+            _safe_str_cmp(new_data.get('issue_date')) != _safe_str_cmp(original_record.get('issue_date')) or
+            _normalize_amount_for_compare(new_data.get('amount')) != _normalize_amount_for_compare(original_record.get('amount')) or
+            _safe_str_cmp(new_data.get('client_name')) != _safe_str_cmp(original_record.get('client_name'))
         )
 
         requires_file_operation = is_location_changed or is_rename_needed
 
         # --- Phase 1: File System Operation ---
+        # file_path が NaN や None の場合は更新不可
+        raw_file_path = original_record.get('file_path')
+        if raw_file_path is None or (isinstance(raw_file_path, float) and math.isnan(raw_file_path)):
+            logger.error(f"Record {record_id} has invalid file_path ({raw_file_path!r}). Aborting update.")
+            return False
         old_full_path = os.path.normpath(
-            os.path.join(self.root_path, original_year, original_record['file_path'])
+            os.path.join(self.root_path, original_year, str(raw_file_path))
         )
         new_full_path = None
         file_op_results = {}
@@ -237,9 +259,11 @@ class MetadataManager:
                 if is_location_changed:
                     doc_id = self.get_next_doc_id(dest_year, dest_category, dest_doc_type)
 
+                # client_name を Windows ファイル名として無効な文字からサニタイズ
+                sanitized_client_name = re.sub(r'[\\/:*?"<>|]', '', str(new_data.get('client_name', '')))
                 new_filename = (
                     f"{doc_id}_{new_data['issue_date']}_"
-                    f"{new_data['amount']}_{new_data['client_name']}.pdf"
+                    f"{new_data['amount']}_{sanitized_client_name}.pdf"
                 )
                 new_relative_path = os.path.join(dest_category, dest_doc_type, new_filename)
                 new_full_path = os.path.join(self.root_path, dest_year, new_relative_path)

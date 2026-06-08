@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import logging
+import math
 import traceback
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QPushButton,
@@ -338,6 +339,24 @@ class FileSearchTab(QWidget):
             logger.debug(traceback.format_exc())
             QMessageBox.critical(self, "検索エラー", f"検索中にエラーが発生しました。\n{e}")
 
+    @staticmethod
+    def _fmt_num(val):
+        """float(例: 10800.0)を整数文字列に変換。NaN/None は空文字列。"""
+        if val is None:
+            return ''
+        if isinstance(val, float):
+            return '' if math.isnan(val) else str(int(val))
+        return str(val)
+
+    @staticmethod
+    def _fmt_str(val):
+        """NaN/None を空文字列に変換する。"""
+        if val is None:
+            return ''
+        if isinstance(val, float) and math.isnan(val):
+            return ''
+        return str(val)
+
     def _populate_table(self, df):
         self.results_table.setRowCount(0)
         if df.empty:
@@ -350,11 +369,11 @@ class FileSearchTab(QWidget):
             # Populate cells
             self.results_table.setItem(row_position, 0, QTableWidgetItem(str(row.get('id', ''))))
             self.results_table.setItem(row_position, 1, QTableWidgetItem(str(row.get('doc_id', ''))))
-            self.results_table.setItem(row_position, 2, QTableWidgetItem(str(row.get('issue_date', ''))))
-            self.results_table.setItem(row_position, 3, QTableWidgetItem(str(row.get('amount', ''))))
-            self.results_table.setItem(row_position, 4, QTableWidgetItem(str(row.get('client_name', ''))))
-            self.results_table.setItem(row_position, 5, QTableWidgetItem(str(row.get('doc_type', ''))))
-            self.results_table.setItem(row_position, 6, QTableWidgetItem(str(row.get('memo', ''))))
+            self.results_table.setItem(row_position, 2, QTableWidgetItem(self._fmt_num(row.get('issue_date'))))
+            self.results_table.setItem(row_position, 3, QTableWidgetItem(self._fmt_num(row.get('amount'))))
+            self.results_table.setItem(row_position, 4, QTableWidgetItem(self._fmt_str(row.get('client_name'))))
+            self.results_table.setItem(row_position, 5, QTableWidgetItem(self._fmt_str(row.get('doc_type'))))
+            self.results_table.setItem(row_position, 6, QTableWidgetItem(self._fmt_str(row.get('memo'))))
 
             # Add buttons
             record_id = row.get('id')
