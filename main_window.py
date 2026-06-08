@@ -47,11 +47,14 @@ class MainWindow(QMainWindow):
         _progress(35, "データを初期化中...")
         self.metadata_manager = MetadataManager(root_save_directory)
 
-        # 起動時に通し番号を再計算（バックグラウンドで実行してUIブロックを回避）
-        threading.Thread(
-            target=self.metadata_manager.recalculate_all_doc_ids,
-            daemon=True
-        ).start()
+        # 起動時に通し番号を再計算してからインデックスを同期
+        # recalculate_all_doc_ids はファイルをリネームするが CSV を更新しないため、
+        # 必ず rebuild_index を続けて呼び出し両者を一致させる。
+        def _recalculate_and_rebuild():
+            self.metadata_manager.recalculate_all_doc_ids()
+            self.metadata_manager.rebuild_index()
+
+        threading.Thread(target=_recalculate_and_rebuild, daemon=True).start()
 
         _progress(50, "登録画面を構築中...")
         self.registration_tab = FileRegistrationTab(config_manager=self.config_manager, metadata_manager=self.metadata_manager)
