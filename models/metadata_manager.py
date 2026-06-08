@@ -196,14 +196,14 @@ class MetadataManager:
         # 1. Load original data
         df_original = self.load_df(original_year)
         if df_original.empty:
-            return False
+            raise RuntimeError(f"{original_year} のインデックスが空です。データが見つかりません。")
 
         df_original['id'] = df_original['id'].astype(str)
         record_id = str(record_id)
 
         original_record_list = df_original.index[df_original['id'] == record_id].tolist()
         if not original_record_list:
-            return False
+            raise RuntimeError(f"レコード ID {record_id} が {original_year} のインデックスに見つかりません。")
         original_index = original_record_list[0]
         original_record = df_original.loc[original_index].to_dict()
 
@@ -246,7 +246,10 @@ class MetadataManager:
         raw_file_path = original_record.get('file_path')
         if raw_file_path is None or (isinstance(raw_file_path, float) and math.isnan(raw_file_path)):
             logger.error(f"Record {record_id} has invalid file_path ({raw_file_path!r}). Aborting update.")
-            return False
+            raise RuntimeError(
+                f"レコード ID {record_id} のファイルパスが無効です（{raw_file_path!r}）。\n"
+                "インデックスを再構築してから再試行してください。"
+            )
         old_full_path = os.path.normpath(
             os.path.join(self.root_path, original_year, str(raw_file_path))
         )
@@ -272,16 +275,28 @@ class MetadataManager:
                     dest_dir = os.path.dirname(new_full_path)
                     os.makedirs(dest_dir, exist_ok=True)
                     shutil.move(old_full_path, new_full_path)
-
-                file_op_results['file_path'] = new_relative_path
-                file_op_results['doc_id'] = doc_id
+                    file_op_results['file_path'] = new_relative_path
+                    file_op_results['doc_id'] = doc_id
+                else:
+                    # ファイルが期待するパスに存在しない（別名でリネーム済みの可能性）
+                    # ファイル移動はスキップしてメタデータのみ更新。file_path は元のまま維持。
+                    logger.warning(
+                        f"Record {record_id}: file not found at '{old_full_path}'. "
+                        "Updating metadata without file rename."
+                    )
+                    file_op_results['file_path'] = str(raw_file_path)
+                    file_op_results['doc_id'] = original_record.get('doc_id')
 
             except Exception as e:
                 logger.error(
-                    f"CRITICAL: File operation failed for record {record_id}. "
-                    f"Aborting before index update. Error: {e}"
+                    f"File operation failed for record {record_id}: {e}"
                 )
-                return False
+                raise RuntimeError(
+                    f"ファイルの移動/名前変更に失敗しました。\n"
+                    f"エラー: {e}\n\n"
+                    f"PDFを別のアプリケーションで開いている場合は閉じてから再試行してください。\n"
+                    f"パス: {old_full_path}"
+                ) from e
 
         # --- Phase 2: Index (CSV) Operation ---
         try:
@@ -321,19 +336,20 @@ class MetadataManager:
         except Exception as e:
             logger.critical(
                 f"CRITICAL INCONSISTENCY: Index update failed for record {record_id} "
-                "AFTER file was moved."
+                f"AFTER file was moved. Error: {e}"
             )
-            logger.critical(f"Error: {e}")
+            rollback_msg = ""
             if new_full_path and os.path.exists(new_full_path):
-                logger.info(
-                    f"Attempting to roll back by moving file from {new_full_path} to {old_full_path}"
-                )
                 try:
                     shutil.move(new_full_path, old_full_path)
                     logger.info(f"Rollback successful. File moved back to {old_full_path}")
+                    rollback_msg = "\nファイルは元の場所に戻しました。"
                 except Exception as move_back_e:
                     logger.critical(
-                        f"CRITICAL: ROLLBACK FAILED. Manual intervention required. "
-                        f"File is at {new_full_path}, index is NOT updated. Error: {move_back_e}"
+                        f"CRITICAL: ROLLBACK FAILED. File is at {new_full_path}, "
+                        f"index is NOT updated. Error: {move_back_e}"
                     )
-            return False
+                    rollback_msg = f"\n警告: ファイルのロールバックに失敗しました。手動で確認してください。\n{new_full_path}"
+            raise RuntimeError(
+                f"インデックス（CSVファイル）の更新に失敗しました。\nエラー: {e}{rollback_msg}"
+            ) from e

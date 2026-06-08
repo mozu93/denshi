@@ -469,22 +469,20 @@ class FileSearchTab(QWidget):
 
             # Update data
             try:
-                success = self.metadata_manager.update_entry(year_nendo, record_id, new_data)
-                if success:
-                    if is_location_changed:
-                        # 移動後にインデックスを自動再構築
-                        try:
-                            self.metadata_manager.rebuild_index()
-                        except Exception as rebuild_e:
-                            logger.warning(f"インデックス再構築に失敗しました: {rebuild_e}")
-                        QMessageBox.information(self, "成功", "ファイルを移動し、インデックスを再構築しました。")
-                    else:
-                        QMessageBox.information(self, "成功", "レコードを更新しました。")
-                    self._search_files()
+                self.metadata_manager.update_entry(year_nendo, record_id, new_data)
+                if is_location_changed:
+                    try:
+                        self.metadata_manager.rebuild_index()
+                    except Exception as rebuild_e:
+                        logger.warning(f"インデックス再構築に失敗しました: {rebuild_e}")
+                    QMessageBox.information(self, "成功", "ファイルを移動し、インデックスを再構築しました。")
                 else:
-                    QMessageBox.warning(self, "エラー", "レコードの更新に失敗しました。")
+                    QMessageBox.information(self, "成功", "レコードを更新しました。")
+                self._search_files()
+            except RuntimeError as e:
+                QMessageBox.critical(self, "更新エラー", str(e))
             except Exception as e:
-                QMessageBox.critical(self, "更新エラー", f"更新中にエラーが発生しました。\n{e}")
+                QMessageBox.critical(self, "更新エラー", f"予期しないエラーが発生しました。\n{e}")
 
     def _delete_row(self, record_id):
         if not record_id:
