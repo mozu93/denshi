@@ -302,7 +302,7 @@ class MetadataManager:
         try:
             final_record_data = original_record.copy()
             final_record_data['issue_date'] = new_data['issue_date']
-            final_record_data['amount'] = new_data['amount']
+            final_record_data['amount'] = str(new_data['amount'])  # CSV は str 型なので int を変換
             final_record_data['client_name'] = new_data['client_name']
             final_record_data['memo'] = new_data['memo']
             final_record_data['updated_at'] = datetime.now().isoformat()

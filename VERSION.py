@@ -7,7 +7,7 @@ Version information for Denshi Chobo Hozon System
 ビルドスクリプト、アプリケーションコード、インストーラー設定などから参照されます。
 """
 
-__version__ = "v2.9.2"
+__version__ = "v2.9.3"
 __build_date__ = "2026-06-08"
 
 # GitHub Repository Information for update checking
