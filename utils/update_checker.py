@@ -5,6 +5,9 @@ GitHub Releases APIを使用して、アプリケーションの最新バージ�
 """
 
 import logging
+import os
+import re
+import sys
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from packaging import version
@@ -87,11 +90,12 @@ def check_for_updates() -> Optional[UpdateInfo]:
             logger.info(f"最新バージョンを使用中です（最新: {latest_version}）")
 
         # アップデート情報を構築
+        raw_notes = release_data.get('body', '更新情報はありません。')
         update_info = UpdateInfo(
             current_version=__version__,
             latest_version=f"v{latest_version}",
             release_url=release_data.get('html_url', ''),
-            release_notes=release_data.get('body', '更新情報はありません。')[:500],  # 先頭500文字
+            release_notes=_clean_release_notes(raw_notes),
             download_url=_extract_download_url(release_data),
             is_newer=is_newer
         )
@@ -113,6 +117,29 @@ def check_for_updates() -> Optional[UpdateInfo]:
     except Exception as e:
         logger.error(f"予期しないエラーが発生しました: {e}", exc_info=True)
         return None
+
+
+def _clean_release_notes(body: str) -> str:
+    """リリースノートからインストール方法セクションを除去し、プレーンテキストに整形する。"""
+    # 「### インストール方法」または「## インストール方法」セクションを削除
+    body = re.sub(
+        r'#{1,3}\s*インストール方法.*?(?=\n#{1,3}\s|\Z)',
+        '',
+        body,
+        flags=re.DOTALL
+    )
+    # Markdown見出し（## / ###）をプレーンテキストに変換
+    body = re.sub(r'^#{1,6}\s*', '', body, flags=re.MULTILINE)
+    # 箇条書き（- / * / 数字.）をプレーンテキストに変換
+    body = re.sub(r'^[\-\*]\s+', '・', body, flags=re.MULTILINE)
+    body = re.sub(r'^\d+\.\s+', '・', body, flags=re.MULTILINE)
+    # 強調（**bold**）を除去
+    body = re.sub(r'\*{1,2}(.+?)\*{1,2}', r'\1', body)
+    # バッククォート除去
+    body = re.sub(r'`(.+?)`', r'\1', body)
+    # 連続する空行を1行にまとめて整形
+    body = re.sub(r'\n{3,}', '\n\n', body)
+    return body.strip()[:600]
 
 
 def _extract_download_url(release_data: Dict[str, Any]) -> str:
@@ -138,24 +165,80 @@ def _extract_download_url(release_data: Dict[str, Any]) -> str:
         if assets:
             return assets[0].get('browser_download_url', '')
 
-        # assetsがない場合はリリースページURL
-        return release_data.get('html_url', '')
+        # assetsがない場合はダウンロード不可（ブラウザ誘導に切り替え）
+        return ''
 
     except Exception as e:
         logger.warning(f"ダウンロードURLの抽出に失敗しました: {e}")
-        return release_data.get('html_url', '')
+        return ''
 
 
 def format_version_for_display(version_str: str) -> str:
-    """
-    バージョン文字列を表示用にフォーマットします。
-
-    Args:
-        version_str: バージョン文字列（例: "v2.0.0" or "2.0.0"）
-
-    Returns:
-        str: フォーマットされたバージョン文字列（例: "v2.0.0"）
-    """
     if not version_str.startswith('v'):
         return f"v{version_str}"
     return version_str
+
+
+def download_installer(
+    url: str,
+    progress_callback=None,
+) -> Optional[str]:
+    """インストーラーを一時フォルダにダウンロードする。失敗時は None を返す"""
+    import tempfile
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": f"DenshiChobohozoSystem/{__version__}"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            total = int(resp.headers.get("Content-Length", -1))
+            fd, tmp_path = tempfile.mkstemp(
+                prefix="DenshiChobohozoSystem_new_", suffix=".exe"
+            )
+            received = 0
+            with os.fdopen(fd, "wb") as f:
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    received += len(chunk)
+                    if progress_callback:
+                        progress_callback(received, total)
+
+        # PE ヘッダー検証（MZ マジックバイト）
+        with open(tmp_path, "rb") as f:
+            magic = f.read(2)
+        if magic != b"MZ":
+            os.unlink(tmp_path)
+            logger.error(
+                f"ダウンロードしたファイルが有効な実行ファイルではありません（先頭バイト: {magic!r}）。"
+                "GitHub Release にインストーラーがアップロードされているか確認してください。"
+            )
+            return None
+
+        return tmp_path
+    except Exception as e:
+        logger.error(f"インストーラーのダウンロードに失敗しました: {e}")
+        return None
+
+
+def launch_installer(installer_path: str) -> None:
+    """バッチファイル経由でインストーラーを起動し、アプリを終了する。
+    バッチが3秒待機してアプリ終了後にインストーラーを起動する。"""
+    import subprocess
+    import tempfile
+    fd, bat_path = tempfile.mkstemp(
+        prefix="DenshiChobohozoSystem_updater_", suffix=".bat"
+    )
+    with os.fdopen(fd, "w", encoding="cp932") as f:
+        f.write("@echo off\r\n")
+        f.write("timeout /t 3 /nobreak > nul\r\n")
+        f.write(f'start "" "{installer_path}"\r\n')
+        f.write('del "%~f0"\r\n')
+    subprocess.Popen(
+        ["cmd", "/c", bat_path],
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    sys.exit(0)

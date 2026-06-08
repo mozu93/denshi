@@ -7,9 +7,29 @@
       "Bash(git pull:*)",
       "Bash(git commit *)",
       "Bash(git push *)",
-      "PowerShell(gh auth *)"
+      "Bash(git tag *)",
+      "Bash(gh run *)",
+      "Bash(gh api *)",
+      "Bash(pip show *)",
+      "Bash(Start-Sleep -Seconds 5)",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(python main.py)",
+      "Bash(powershell *)",
+      "Bash(del tmp_debug.py tmp_debug2.py tmp_debug3.py tmp_debug4.py)",
+      "Bash(del tmp_inspect.py tmp_inspect2.py tmp_inspect3.py tmp_inspect4.py tmp_inspect5.py tmp_test_new.py tmp_uq_test.py)",
+      "Bash(dir tmp_*)",
+      "Read(//tmp/**)",
+      "WebFetch(domain:www.nta.go.jp)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)",
+      "PowerShell(gh auth *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\taka\\\\Downloads\\\\請求書\\\\請求書\" | ForEach-Object { $_.Name })"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "serena"
+  ]
 }

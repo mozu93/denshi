@@ -1,4 +1,4 @@
-import pandas as pd
+from __future__ import annotations
 import os
 import logging
 
@@ -12,7 +12,8 @@ class CsvRepository:
         'created_at', 'updated_at'
     ]
 
-    def load(self, csv_path: str) -> pd.DataFrame:
+    def load(self, csv_path: str) -> pd.DataFrame:  # noqa: F821
+        import pandas as pd
         logger.debug(f"load - csv_path: {csv_path}")
         if not csv_path or not os.path.exists(csv_path):
             logger.debug(f"load - CSVファイルが存在しません: {csv_path}")
@@ -48,7 +49,7 @@ class CsvRepository:
             logger.error(f"CSVファイル '{csv_path}' の読み込みに失敗しました: {e}")
             return pd.DataFrame(columns=self.COLUMNS)
 
-    def save(self, csv_path: str, df: pd.DataFrame):
+    def save(self, csv_path: str, df: pd.DataFrame):  # noqa: F821
         if not csv_path:
             raise ValueError(f"無効なCSVパスです: {csv_path}")
 

@@ -5,45 +5,45 @@ UI統一スタイル定義
 統一されたUIスタイルを定義します。
 """
 
-def get_app_style():
+def get_app_style(font_size=10):
     """アプリケーション全体のスタイルを取得"""
-    return """
-        QWidget {
+    return f"""
+        QWidget {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
-            font-size: 10pt;
+            font-size: {font_size}pt;
             background-color: #e8e8e8;
-        }
-        QLabel {
+        }}
+        QLabel {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: transparent;
-        }
-        QLineEdit {
+        }}
+        QLineEdit {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #ffffff;
             border: 1px solid #999999;
             padding: 4px;
             border-radius: 3px;
-        }
-        QLineEdit:focus {
+        }}
+        QLineEdit:focus {{
             border-color: #4a90e2;
             background-color: #ffffff;
-        }
-        QComboBox {
+        }}
+        QComboBox {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #ffffff;
             border: 1px solid #999999;
             padding: 4px;
             border-radius: 3px;
-        }
-        QComboBox:focus {
+        }}
+        QComboBox:focus {{
             border-color: #4a90e2;
-        }
-        QComboBox::drop-down {
+        }}
+        QComboBox::drop-down {{
             border: none;
             width: 20px;
             background-color: #ffffff;
-        }
-        QComboBox::down-arrow {
+        }}
+        QComboBox::down-arrow {{
             image: none;
             border: 2px solid #666666;
             width: 6px;
@@ -51,94 +51,94 @@ def get_app_style():
             border-top: none;
             border-left: none;
             margin-right: 5px;
-        }
-        QTextEdit {
+        }}
+        QTextEdit {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #ffffff;
             border: 1px solid #999999;
             padding: 4px;
             border-radius: 3px;
-        }
-        QTextEdit:focus {
+        }}
+        QTextEdit:focus {{
             border-color: #4a90e2;
-        }
-        QSpinBox {
+        }}
+        QSpinBox {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #ffffff;
             border: 1px solid #999999;
             padding: 4px;
             border-radius: 3px;
-        }
-        QSpinBox:focus {
+        }}
+        QSpinBox:focus {{
             border-color: #4a90e2;
-        }
-        QDateEdit {
+        }}
+        QDateEdit {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #ffffff;
             border: 1px solid #999999;
             padding: 4px;
             border-radius: 3px;
-        }
-        QDateEdit:focus {
+        }}
+        QDateEdit:focus {{
             border-color: #4a90e2;
-        }
-        QCalendarWidget {
+        }}
+        QCalendarWidget {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #ffffff;
-        }
-        QCalendarWidget QAbstractItemView {
+        }}
+        QCalendarWidget QAbstractItemView {{
             background-color: #ffffff;
             color: #000000;
             selection-background-color: #b3e5fc;
             selection-color: #000000;
-        }
-        QCalendarWidget QWidget {
+        }}
+        QCalendarWidget QWidget {{
             color: #000000;
-        }
-        QCalendarWidget QTableView {
+        }}
+        QCalendarWidget QTableView {{
             background-color: #ffffff;
             color: #000000;
             gridline-color: #d0d0d0;
-        }
-        QCalendarWidget QToolButton {
+        }}
+        QCalendarWidget QToolButton {{
             color: #000000;
             background-color: #f0f0f0;
             border: 1px solid #cccccc;
-        }
-        QCalendarWidget QToolButton:hover {
+        }}
+        QCalendarWidget QToolButton:hover {{
             background-color: #e0e0e0;
-        }
-        QCalendarWidget QSpinBox {
+        }}
+        QCalendarWidget QSpinBox {{
             color: #000000;
             background-color: #ffffff;
             border: 1px solid #cccccc;
-        }
-        QCalendarWidget QMenu {
+        }}
+        QCalendarWidget QMenu {{
             color: #000000;
             background-color: #ffffff;
-        }
-        QGroupBox {
+        }}
+        QGroupBox {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #e8e8e8;
             border: 1px solid #999999;
             border-radius: 5px;
             margin-top: 10px;
             padding-top: 10px;
-        }
-        QGroupBox::title {
+        }}
+        QGroupBox::title {{
             subcontrol-origin: margin;
             left: 10px;
             padding: 0 5px 0 5px;
             background-color: #e8e8e8;
-        }
-        QTableWidget {
+        }}
+        QTableWidget {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #ffffff;
-        }
-        QListWidget {
+        }}
+        QListWidget {{
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
             background-color: #ffffff;
-        }
+        }}
     """
 
 def get_button_style():
@@ -151,7 +151,6 @@ def get_button_style():
             padding: 5px 10px;
             border-radius: 4px;
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
-            font-size: 10pt;
             font-weight: normal;
         }
         QPushButton:hover {
@@ -179,7 +178,6 @@ def get_small_button_style():
             padding: 3px 8px;
             border-radius: 3px;
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
-            font-size: 9pt;
             font-weight: normal;
         }
         QPushButton:hover {
@@ -207,7 +205,6 @@ def get_table_style():
             background-color: #ffffff;
             alternate-background-color: #f5f5f5;
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
-            font-size: 10pt;
         }
         QTableWidget::item:selected {
             background-color: #b3e5fc;
@@ -234,7 +231,6 @@ def get_list_widget_style():
             background-color: #ffffff;
             border: 1px solid #d0d0d0;
             font-family: 'Meiryo UI', 'Meiryo', sans-serif;
-            font-size: 10pt;
         }
         QListWidget::item:selected {
             background-color: #b3e5fc;
@@ -245,9 +241,9 @@ def get_list_widget_style():
         }
     """
 
-def apply_app_style(app):
+def apply_app_style(app, font_size=10):
     """アプリケーション全体にスタイルを適用"""
-    app.setStyleSheet(get_app_style())
+    app.setStyleSheet(get_app_style(font_size))
 
 def apply_button_style(button):
     """ボタンにスタイルを適用"""

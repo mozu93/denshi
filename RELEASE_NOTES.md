@@ -88,7 +88,7 @@ def rebuild_index(self):
 ## 🔧 必要なシステム環境
 
 - Python 3.11以上
-- Tesseract OCR（オプション）
+- Windows 10/11（OCRは OS 標準搭載エンジンを使用）
 - ネットワークドライブへのアクセス権限
 
 ## 📖 ドキュメント

@@ -73,19 +73,34 @@ class SettingsDialog(QDialog):
         root_dir_group.setLayout(root_dir_group_layout)
         self.left_layout.addWidget(root_dir_group)
 
-        # Tesseract Path
-        tesseract_group = QGroupBox("OCR設定")
-        tesseract_group_layout = QVBoxLayout()
-        tesseract_layout = QHBoxLayout()
-        tesseract_layout.addWidget(QLabel("Tesseract OCR のパス:"))
-        self.tesseract_path_edit = QLineEdit(self)
-        tesseract_layout.addWidget(self.tesseract_path_edit)
-        self.browse_tesseract_button = QPushButton('参照...', self)
-        self.browse_tesseract_button.clicked.connect(self.browse_tesseract_path)
-        tesseract_layout.addWidget(self.browse_tesseract_button)
-        tesseract_group_layout.addLayout(tesseract_layout)
-        tesseract_group.setLayout(tesseract_group_layout)
-        self.left_layout.addWidget(tesseract_group)
+        # OCR設定（Windows OCR）
+        ocr_group = QGroupBox("OCR設定")
+        ocr_group_layout = QVBoxLayout()
+        try:
+            from winsdk.windows.media.ocr import OcrEngine
+            from winsdk.windows.globalization import Language
+            ja_supported = OcrEngine.is_language_supported(Language("ja"))
+            ocr_status_label = QLabel(
+                f"OCRエンジン: Windows OCR (WinRT)\n"
+                f"日本語サポート: {'✓ 有効' if ja_supported else '✗ 言語パック未インストール'}"
+            )
+            ocr_status_label.setStyleSheet(
+                "color: #2a7a2a;" if ja_supported else "color: #c0392b;"
+            )
+            ocr_group_layout.addWidget(ocr_status_label)
+            if not ja_supported:
+                hint_label = QLabel(
+                    "Windowsの設定 → 言語 → 日本語 → オプション\n"
+                    "から「基本入力」または「OCR」言語パックをインストールしてください。"
+                )
+                hint_label.setStyleSheet("color: #888; font-size: 9pt;")
+                ocr_group_layout.addWidget(hint_label)
+        except Exception:
+            ocr_status_label = QLabel("OCRエンジン: Windows OCR (WinRT)\n状態: winsdk パッケージが見つかりません")
+            ocr_status_label.setStyleSheet("color: #c0392b;")
+            ocr_group_layout.addWidget(ocr_status_label)
+        ocr_group.setLayout(ocr_group_layout)
+        self.left_layout.addWidget(ocr_group)
 
         # Document Types Management
         doc_type_group = QGroupBox("書類種別管理")
@@ -237,9 +252,6 @@ class SettingsDialog(QDialog):
         root_dir = self.config_manager.get('Paths', 'root_save_directory', fallback=HARDCODED_ROOT_SAVE_DIRECTORY)
         self.root_dir_edit.setText(root_dir)
 
-        tesseract_path = self.config_manager.get_tesseract_path()
-        self.tesseract_path_edit.setText(tesseract_path)
-
         self._load_doc_type_table(self.expenditure_doc_type_table, 'FolderNames_Expenditure')
         self._load_doc_type_table(self.income_doc_type_table, 'FolderNames_Income')
         self._load_doc_type_table(self.other_org_doc_type_table, 'FolderNames_OtherOrganization')
@@ -260,11 +272,6 @@ class SettingsDialog(QDialog):
         if directory:
             self.root_dir_edit.setText(directory)
 
-    def browse_tesseract_path(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, 'Tesseract OCR を選択', '', '実行ファイル (*.exe)')
-        if file_path:
-            self.tesseract_path_edit.setText(file_path)
-
     def save_settings(self):
         try:
             root_dir = self.root_dir_edit.text().strip()
@@ -274,8 +281,6 @@ class SettingsDialog(QDialog):
             self.new_root_dir = root_dir
             self.config_manager.set('Paths', 'root_save_directory', self.new_root_dir)
 
-            tesseract_path = self.tesseract_path_edit.text()
-            self.config_manager.set_tesseract_path(tesseract_path)
 
             self.config_manager.set_section('FolderNames_Expenditure',
                                             self._read_doc_type_table(self.expenditure_doc_type_table))
@@ -466,7 +471,7 @@ class SettingsDialog(QDialog):
         apply_small_button_style(self.shared_config_path_button)
         apply_small_button_style(self.clear_shared_config_button)
         apply_small_button_style(self.root_dir_button)
-        apply_small_button_style(self.browse_tesseract_button)
+
 
         # 書類種別管理ボタン
         apply_small_button_style(self.add_doc_type_button)

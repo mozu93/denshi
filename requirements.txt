@@ -1,7 +1,9 @@
 PyQt6
 PyMuPDF
-pytesseract
+pdfplumber
 jaconv
 pandas
+pytz
 send2trash
 filelock
+winsdk

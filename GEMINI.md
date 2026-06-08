@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 ### OCR Engine
 
-This application uses Tesseract OCR. You need to install it and ensure it's in your system's PATH or configure the path in the application's settings.
+This application uses Windows OCR (WinRT), built into Windows 10/11. No additional installation is required. The Japanese language pack for Windows must be installed (it is included by default on Japanese Windows systems).
 
 ### Running the Application
 
@@ -68,4 +68,4 @@ To stop using the shared configuration, simply go to "Settings", click "Clear Sh
 - **Modularity:** The code is organized into `models`, `views`, and `utils` directories, separating data logic, UI components, and helper functions.
 - **Configuration:** Application settings are managed through a `config.ini` file, which is accessed via the `ConfigManager` class in `utils/config_manager.py`.
 - **Data Management:** Metadata for the documents is stored in a CSV file (`index.csv`) within each year's directory. The `MetadataManager` class in `models/metadata_manager.py` handles all interactions with this data.
-- **PDF and OCR:** PDF processing is handled by the `PdfProcessor` class (`models/pdf_processor.py`) using PyMuPDF. OCR functionality is encapsulated in the `OcrProcessor` class (`models/ocr_processor.py`) using pytesseract.
+- **PDF and OCR:** PDF processing is handled by the `PdfProcessor` class (`models/pdf_processor.py`) using PyMuPDF. OCR functionality is encapsulated in the `OcrProcessor` class (`models/ocr_processor.py`) using the Windows OCR engine via the `winsdk` package.

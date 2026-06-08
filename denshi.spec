@@ -32,7 +32,13 @@ datas += numpy_datas
 datas += pandas_datas
 
 # pytz は collect_all を使わず dist-info のみコピー（collect_all との競合を避ける）
-datas += copy_metadata('pytz')
+try:
+    datas += copy_metadata('pytz')
+except Exception:
+    pass  # pytz が未インストールの場合はスキップ
+
+# pdfplumber のデータファイル
+datas += collect_data_files('pdfplumber')
 
 # 隠れたインポートの明示的な指定
 hiddenimports = [
@@ -40,7 +46,6 @@ hiddenimports = [
     'PyQt6.QtGui',
     'PyQt6.QtWidgets',
     'PyQt6.sip',
-    'pytesseract',
     'fitz',
     'pandas',
     'pandas._libs',
@@ -56,6 +61,21 @@ hiddenimports = [
     'send2trash',
     'filelock',
     'pytz',
+    'pdfplumber',
+    'pdfminer',
+    'pdfminer.six',
+    'pdfminer.high_level',
+    'pdfminer.layout',
+    'pdfminer.pdfpage',
+    'pdfminer.pdfinterp',
+    'pdfminer.converter',
+    'cryptography',
+    'charset_normalizer',
+    'winsdk',
+    'winsdk.windows.media.ocr',
+    'winsdk.windows.globalization',
+    'winsdk.windows.graphics.imaging',
+    'winsdk.windows.storage.streams',
 ]
 
 # PyQt6の全サブモジュールを収集
@@ -71,11 +91,26 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        # 標準ライブラリ（不要）
         'matplotlib',
         'scipy',
         'tkinter',
         'unittest',
         'test',
+        # 重い機械学習ライブラリ（使用しない）
+        'torch',
+        'torchvision',
+        'torchaudio',
+        'sklearn',
+        'scikit_learn',
+        'numba',
+        'llvmlite',
+        'onnxruntime',
+        'onnx',
+        'tensorflow',
+        'cv2',
+        'PIL.features',  # PIL は使うが features は不要
+        'av',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

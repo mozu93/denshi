@@ -1,77 +1,68 @@
 import configparser
 import logging
-from filelock import Timeout, FileLock
+import threading
 
 class ConfigManager:
     def __init__(self, config_path='config.ini'):
         self.config_path = config_path
-        self.lock_path = self.config_path + ".lock"
-        # タイムアウトを5秒に設定
-        self.lock = FileLock(self.lock_path, timeout=5)
+        # スレッドセーフなリエントラントロック（同一スレッドから複数回取得可能）
+        self._lock = threading.RLock()
         self.config = configparser.ConfigParser()
-        
+
         try:
-            # 読み込み時にもロックを試みる
-            with self.lock.acquire(timeout=5):
+            with self._lock:
                 self.config.read(self.config_path, encoding='utf-8')
-        except Timeout:
-            # 起動時に他のユーザーが編集中でも、とりあえず読み込みは試みる
-            logging.warning(f"設定ファイル '{self.config_path}' のロックを取得できませんでした（読み込み時）。読み込みを続行します。")
-            self.config.read(self.config_path, encoding='utf-8')
         except (IOError, configparser.Error) as e:
             logging.error(f"設定ファイル '{self.config_path}' の読み込みに失敗しました: {e}")
 
     def get(self, section, key, fallback=None):
-        return self.config.get(section, key, fallback=fallback)
+        with self._lock:
+            return self.config.get(section, key, fallback=fallback)
 
     def get_section(self, section):
-        if self.config.has_section(section):
-            return dict(self.config.items(section))
-        return {}
+        with self._lock:
+            if self.config.has_section(section):
+                return dict(self.config.items(section))
+            return {}
 
     def set_section(self, section, data):
-        if self.config.has_section(section):
-            self.config.remove_section(section)
-        self.config.add_section(section)
-        for key, value in data.items():
-            self.config.set(section, key, str(value))
-        self.save()
+        with self._lock:
+            if self.config.has_section(section):
+                self.config.remove_section(section)
+            self.config.add_section(section)
+            for key, value in data.items():
+                self.config.set(section, key, str(value))
+            self._save_locked()
 
     def set(self, section, key, value):
-        if not self.config.has_section(section):
-            self.config.add_section(section)
-        str_value = str(value)
-        if '../' in str_value or '..' in str_value:
-            logging.warning(f"危険なパス文字列が検出されました: {str_value}")
-            str_value = str_value.replace('../', '').replace('..', '')
-        self.config.set(section, key, str_value)
-        self.save()
+        with self._lock:
+            if not self.config.has_section(section):
+                self.config.add_section(section)
+            str_value = str(value)
+            if '../' in str_value or '..' in str_value:
+                logging.warning(f"危険なパス文字列が検出されました: {str_value}")
+                str_value = str_value.replace('../', '').replace('..', '')
+            self.config.set(section, key, str_value)
+            self._save_locked()
 
-    def save(self):
+    def _save_locked(self):
+        """_lock 取得済みの状態から呼ぶ内部メソッド。"""
         try:
-            # 書き込み時にロックを取得
-            with self.lock.acquire(timeout=5):
-                with open(self.config_path, 'w', encoding='utf-8') as configfile:
-                    self.config.write(configfile)
-        except Timeout:
-            logging.warning(f"設定ファイル '{self.config_path}' のロック取得に失敗しました。")
-            # ユーザーフレンドリーなエラーメッセージを投げる
-            raise RuntimeError("他のユーザーが設定を編集中です。しばらくしてから再度お試しください。")
+            with open(self.config_path, 'w', encoding='utf-8') as configfile:
+                self.config.write(configfile)
         except (IOError, OSError) as e:
             logging.error(f"設定ファイル '{self.config_path}' の保存に失敗しました: {e}")
             raise RuntimeError(f"設定ファイルの保存に失敗しました: {e}")
+
+    def save(self):
+        with self._lock:
+            self._save_locked()
 
     def get_last_input(self, key, fallback=None):
         return self.get('LastInputs', key, fallback=fallback)
 
     def set_last_input(self, key, value):
         self.set('LastInputs', key, value)
-
-    def get_tesseract_path(self):
-        return self.get('Tesseract', 'Path', fallback='')
-
-    def set_tesseract_path(self, path):
-        self.set('Tesseract', 'Path', path)
 
     def get_ui_font_size(self, fallback=10):
         try:
