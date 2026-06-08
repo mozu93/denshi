@@ -251,17 +251,13 @@ class FileSearchTab(QWidget):
 
         header = self.results_table.horizontalHeader()
 
-        # 通し番号・発行日・金額・編集ボタン列は内容に合わせて自動調整
-        for col in [1, 2, 3, 7]:
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        # データ列（1〜6）はインタラクティブ（ユーザーが手動リサイズ可能）
+        # データ読み込み後に resizeColumnsToContents() でコンテンツに合わせて自動調整する
+        for col in range(1, 7):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
 
-        # 取引先名・書類種別列はストレッチで残りスペースを均等に使用
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-
-        # メモ列は固定幅（小さめ）
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
-        self.results_table.setColumnWidth(6, 240)
+        # 編集ボタン列は常にボタン幅に合わせる
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
 
         self.results_table.setWordWrap(True)
 
@@ -381,6 +377,10 @@ class FileSearchTab(QWidget):
             edit_btn.clicked.connect(partial(self._edit_row, record_id))
             apply_button_style(edit_btn)
             self.results_table.setCellWidget(row_position, 7, edit_btn)
+
+        # データ内容に応じて列幅を自動調整（列1〜6）
+        for col in range(1, 7):
+            self.results_table.resizeColumnToContents(col)
 
     def _open_pdf(self, row, column):
         record_id_item = self.results_table.item(row, 0)
